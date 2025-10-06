@@ -1,0 +1,7 @@
+mido
+numpy
+pytorch
+torchaudio
+torchvision
+soundfile
+pretty_midi
