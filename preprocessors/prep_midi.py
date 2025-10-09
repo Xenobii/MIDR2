@@ -1,10 +1,12 @@
 import mido
-import json
 import numpy as np
-import torch
+import json
+import matplotlib.pyplot as plt
+import pretty_midi
+import librosa
 
 
-class MIDIProcessor():
+class MidiProcessor():
     def __init__(self, config):
         # midi
         self.num_pitch  = config['midi']['num_pitch']
@@ -13,8 +15,8 @@ class MIDIProcessor():
         self.num_notes  = config['midi']['num_notes']
 
         # feature
-        self.sr         = config['feature']['sr']
-        self.hop_sample = config['feature']['hop_sample']
+        self.sr         = config['spec']['sr']
+        self.hop_sample = config['spec']['hop_sample']
 
     def midi2note(self, f_midi, verbose_flag = False):
         # (1) read MIDI file
@@ -185,15 +187,12 @@ class MIDIProcessor():
 
         return a_note_sort
     
-    def note2label(self, f_note, offset_duration_tolerance_flag=False):
+    def note2label(self, a_note, offset_duration_tolerance_flag=False):
         # (0) settings
         # tolerance: 50[ms]
         hop_ms = 1000 * self.hop_sample / self.sr
         onset_tolerance = int(50.0 / hop_ms + 0.5)
         offset_tolerance = int(50.0 / hop_ms + 0.5)
-
-        with open(f_note, 'r', encoding='utf-8') as f:
-            a_note = json.load(f)
 
         # 62.5 (hop=256, fs=16000)
         nframe_in_sec = self.sr / self.hop_sample
@@ -203,11 +202,14 @@ class MIDIProcessor():
             if max_offset < note['offset']:
                 max_offset = note['offset']
         
-        nframe = int(max_offset * nframe_in_sec + 0.5) + 1
-        a_mpe = np.zeros((nframe, self.num_notes), dtype=np.bool)
-        a_onset = np.zeros((nframe, self.num_notes), dtype=np.float32)
-        a_offset = np.zeros((nframe, self.num_notes), dtype=np.float32)
-        a_velocity = np.zeros((nframe, self.num_notes), dtype=np.int8)
+        nframe  = int(max_offset * nframe_in_sec + 0.5) + 1
+
+        # initialize labels
+        a_mpe       = np.zeros((nframe, self.num_notes), dtype=np.bool)
+        a_onset     = np.zeros((nframe, self.num_notes), dtype=np.float32)
+        a_offset    = np.zeros((nframe, self.num_notes), dtype=np.float32)
+        a_velocity  = np.zeros((nframe, self.num_notes), dtype=np.int8)
+        a_pitch_vel = np.zeros((nframe, self.num_notes), dtype=np.int8)
 
         for i in range(len(a_note)):
             pitch = a_note[i]['pitch'] - self.note_min
@@ -252,6 +254,10 @@ class MIDIProcessor():
             for j in range(onset_frame, offset_frame+1):
                 a_mpe[j][pitch] = 1
 
+            # pitch with velocity
+            for j in range(onset_frame, offset_frame+1):
+                a_pitch_vel[j][pitch] = velocity
+
             # offset
             offset_flag = True
             for j in range(len(a_note)):
@@ -281,10 +287,10 @@ class MIDIProcessor():
         # offset     : 0.0-1.0
         # velocity   : 0 - 127
         a_label = {
-            'mpe'       : a_mpe.tolist(),
-            'onset'     : a_onset.tolist(),
-            'offset'    : a_offset.tolist(),
-            'velocity'  : a_velocity.tolist()
+            'mpe'      : a_mpe.tolist(),
+            'onset'    : a_onset.tolist(),
+            'offset'   : a_offset.tolist(),
+            'velocity' : a_velocity.tolist()
         }
 
         return a_label
@@ -344,3 +350,37 @@ class MIDIProcessor():
             a_ref_10.append(freqs)
 
         return a_ref_10, a_ref_16
+    
+    def __call__(self, x):
+        x = self.midi2note(x)
+        x = self.note2label(x)
+        return x
+    
+    def plot_spec(self, spec):
+        spec = np.array(spec)
+        if spec.ndim != 2:
+            raise ValueError(f"Expected a 2D array, got shape {spec.shape}")
+
+        plt.figure(figsize=(10, 4))
+        plt.imshow(
+            spec.T,            # transpose to put time on x-axis, notes on y-axis
+            aspect="auto",
+            origin="lower",
+            cmap="magma",
+            interpolation="nearest",
+        )
+        plt.colorbar(label="Velocity / Activation Strength")
+        plt.title("Spec")
+        plt.xlabel("Frame Index")
+        plt.ylabel("Pitch Index")
+        plt.tight_layout()
+        plt.show()
+
+
+if __name__=="__main__":
+    with open('config.json', 'r', encoding='utf-8') as f:
+        config = json.load(f)
+
+    preproc = MidiProcessor(config)
+
+    f_midi = "test_files/test_midi.MID"

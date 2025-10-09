@@ -1,0 +1,34 @@
+{   
+    "spec": {
+        "sr"           : 16000,
+        "hop_sample"   : 256,
+        "mel_bins"     : 256,
+        "n_bins"       : 256,
+        "fft_bins"     : 2048,
+        "window_length": 2048,
+        "log_offset"   : 1e-8,
+        "window"       : "hann",
+        "pad_mode"     : "constant"
+    },
+    "input": {
+        "nframe"     : 128,
+        "len_padding": 16
+    },
+    "midi":{
+        "num_pitch"     : 127,
+        "note_min"      : 21,
+        "note_max"      : 108,
+        "num_notes"     : 88
+    },
+    "midr":{
+        "circle": {
+            "radius"    : 1,
+            "weighted"  : true
+        },
+        "torus": {
+            "radius_in" : 0.3,
+            "radius_out": 1,
+            "weighted"  : true
+        }
+    }
+}
