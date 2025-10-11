@@ -10,7 +10,6 @@ import matplotlib.pyplot as plt
 import librosa
 
 
-
 class WavPreprocessor():
     def __init__(self, config):
         # spec
@@ -61,11 +60,11 @@ class WavPreprocessor():
         num_chunks     = math.ceil(num_frame_spec / nframe)
         num_frame_pad  = num_chunks * nframe - num_frame_spec
         spec           = F.pad(spec, (0, num_frame_pad), mode='constant', value=pad_value)
+        spec           = spec.transpose(0, 1)
 
         # 2. Split directly into non-overlapping chunks
-        chunks = spec.unfold(dimension=1, size=nframe, step=nframe)
-        chunks = chunks.permute(1, 0, 2).contiguous()  # (num_chunks, n_mels, nframe)
-        return chunks
+        chunks = spec.unfold(dimension=0, size=nframe, step=nframe) 
+        return chunks.permute(0, 2, 1).contiguous().numpy() # (num_chunks, nframe, n_mels)
     
     def __call__(self, x):
         x = self.wav2spec(x)

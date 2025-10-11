@@ -2,8 +2,9 @@ import mido
 import numpy as np
 import json
 import matplotlib.pyplot as plt
-import pretty_midi
-import librosa
+import torch
+import math
+import torch.nn.functional as F
 
 
 class MidiProcessor():
@@ -14,9 +15,13 @@ class MidiProcessor():
         self.note_max   = config['midi']['note_max']
         self.num_notes  = config['midi']['num_notes']
 
-        # feature
+        # spec
         self.sr         = config['spec']['sr']
         self.hop_sample = config['spec']['hop_sample']
+
+        # input
+        self.nframe      = config['input']['nframe']
+        self.len_padding = config['input']['len_padding']
 
     def midi2note(self, f_midi, verbose_flag = False):
         # (1) read MIDI file
@@ -294,6 +299,21 @@ class MidiProcessor():
         }
 
         return a_label
+    
+    def midr2chunks(self, midi: torch.Tensor) -> torch.Tensor:
+        pad_value = 0.0
+        nframe    = self.nframe
+
+        # Pad right to make multiple of nframe
+        num_frame_midr = midi.shape[1]
+        num_chunks     = math.ceil(num_frame_midr / nframe)
+        num_frame_pad  = num_chunks * nframe - num_frame_midr
+        midi           = F.pad(midi, (0, num_frame_pad), mode='constant', value=pad_value)
+
+          # Split directly into non overlapping chunks
+        chunks = midi.unfold(dimension=1, size=nframe, step=nframe)
+        chunks = chunks.permute(1, 0, 2).contiguous()                # (num_chunks, 88, nframe)
+        return chunks
     
     def note2ref(self, note_txt_path):
         def note2freq(note_number):

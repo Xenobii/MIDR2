@@ -1,5 +1,6 @@
 import numpy as np
 from midr.utils import unwrap_angles
+import matplotlib.pyplot as plt
 from scipy.spatial.distance import pdist
 
 
@@ -11,19 +12,17 @@ class Circle:
         
         self.note_angles = None
         self.center      = None
-        self.area        = None
         self.diameter    = None
 
     def __repr__(self):
-        return {
-            f"Circle: {
-                "radius     : ", self.radius,
-                "weighted   : ", self.weighted,
-                "center     : ", self.center,
-                "diameter   : ", self.diameter,
-                "area       : ", self.area
-            }"
-        }
+        return (
+            f"Circle("
+            f"radius={self.radius}, "
+            f"weighted={self.weighted}, "
+            f"center={self.center}, "
+            f"diameter={self.diameter}, "
+            f")"
+        )
     
     def get_note_angles(self, pitches):
         angles = np.array(pitches, dtype=np.float32) * (np.pi / 6)
@@ -88,20 +87,18 @@ class Spiral:
 
         self.note_angles = None
         self.center      = None
-        self.area        = None
         self.diameter    = None
     
     def __repr__(self):
-        return {
-            f"Spiral: {
-                "radius     : ", self.radius,
-                "height     : ", self.height,
-                "weighted   : ", self.weighted,
-                "center     : ", self.center,
-                "diameter   : ", self.diameter,
-                "area       : ", self.area
-            }"
-        }
+        return (
+            f"Spiral("
+            f"radius={self.radius}, "
+            f"height={self.height}, "
+            f"weighted={self.weighted}, "
+            f"center={self.center}, "
+            f"diameter={self.diameter}, "
+            f")"
+        )
     
     def get_note_angles(self, pitches):
         angles = np.array(pitches, dtype=np.float32) * (np.pi / 2)

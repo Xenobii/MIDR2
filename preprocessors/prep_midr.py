@@ -2,11 +2,21 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pretty_midi
 import json
+import torch
+import math
+import torch.nn.functional as F
+
+from midr.midr import Circle, Spiral
 
 
 class MidrPreprocessor:
     def __init__(self, config):
+        # spec
         self.fs = config['spec']['sr'] / config['spec']['hop_sample']
+        
+        # input
+        self.nframe      = config['input']['nframe']
+        self.len_padding = config['input']['len_padding']
 
         self.circle = Circle(config)
         self.spiral = Spiral(config)
@@ -28,32 +38,49 @@ class MidrPreprocessor:
         nframe      = len(chroma)
         a_circle_cc = np.zeros((nframe, 2), dtype=np.float32)
         a_circle_cd = np.zeros((nframe, 1), dtype=np.float32)
-
         a_spiral_cc = np.zeros((nframe, 3), dtype=np.float32)
         a_spiral_cd = np.zeros((nframe, 1), dtype=np.float32)
 
         for i in range(nframe):
-            # circle
             pitches = np.nonzero(chroma[i])[0]
             if pitches.size > 0:
                 velocities = chroma[i][pitches]
+                # circle
                 self.circle.create_cloud(pitches, velocities)
                 a_circle_cc[i] = self.circle.center
                 a_circle_cd[i] = self.circle.diameter
+                # spiral
+                self.spiral.create_cloud(pitches, velocities)
+                a_spiral_cc[i] = self.spiral.center
+                a_spiral_cd[i] = self.spiral.diameter
 
-        a_circle = {
-            'circle_cc' : a_circle_cc.tolist(),
-            'circle_cd' : a_circle_cd.tolist(),
-        }
-        a_spiral = {
-            'spiral_cc' : a_spiral_cc.tolist(),
-            'spiral_cd' : a_spiral_cd.tolist(),
-        }
+        # Convert to chunks
+        a_circle_cc = self.midr2chunks(torch.from_numpy(a_circle_cc))
+        a_circle_cd = self.midr2chunks(torch.from_numpy(a_circle_cd))
+        a_spiral_cc = self.midr2chunks(torch.from_numpy(a_spiral_cc))
+        a_spiral_cd = self.midr2chunks(torch.from_numpy(a_spiral_cd))
+
         a_midr = {
-            'circle' : a_circle,
-            'spiral' : a_spiral
+            'circle_cc' : a_circle_cc,
+            'circle_cd' : a_circle_cd,
+            'spiral_cc' : a_spiral_cc,
+            'spiral_cd' : a_spiral_cd,
         }
         return a_midr
+    
+    def midr2chunks(self, midr: torch.Tensor) -> torch.Tensor:
+        pad_value = 0.0
+        nframe    = self.nframe
+
+        # Pad right to make multiple of nframe
+        num_frame_midr = midr.shape[0]
+        num_chunks     = math.ceil(num_frame_midr / nframe)
+        num_frame_pad  = num_chunks * nframe - num_frame_midr
+        midr           = F.pad(midr, (0, 0, 0, num_frame_pad), mode='constant', value=pad_value)
+
+        # Split directly into non overlapping chunks
+        chunks = midr.unfold(dimension=0, size=nframe, step=nframe) # (num_chunks, nframe, x)
+        return chunks.permute(0, 2, 1).contiguous().numpy()
     
     def __call__(self, x):
         x = self.midi2chroma(x)
