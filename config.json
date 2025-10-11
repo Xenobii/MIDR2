@@ -22,13 +22,18 @@
     },
     "midr":{
         "circle": {
-            "radius"    : 1,
-            "weighted"  : true
+            "radius"  : 1,
+            "weighted": true
         },
         "torus": {
             "radius_in" : 0.3,
             "radius_out": 1,
             "weighted"  : true
+        },
+        "spiral": {
+            "radius"  : 1,
+            "height"  : 12,
+            "weighted": true
         }
     }
 }
