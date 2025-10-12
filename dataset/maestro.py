@@ -40,4 +40,5 @@ class MaestroDataset(Dataset):
         if self.transform is not None:
             spec = self.transform(spec)
 
-        return spec, circle_cd, circle_cc, spiral_cd, spiral_cc
+        # Return only spiral for now
+        return spec, spiral_cd, spiral_cc

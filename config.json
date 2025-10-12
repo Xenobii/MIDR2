@@ -35,5 +35,11 @@
             "height"  : 12,
             "weighted": true
         }
+    },
+    "training": {
+        "lr"         : 0.001,
+        "batch_size" : 8,
+        "num_workers": 4,
+        "epochs"     : 4
     }
 }

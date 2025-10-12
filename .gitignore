@@ -3,3 +3,4 @@ test_files
 processed_dataset.h5
 .vscode
 maestro-v3.0.0
+checkpoints
