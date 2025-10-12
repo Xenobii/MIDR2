@@ -53,8 +53,8 @@ class Model(nn.Module):
     @torch.inference_mode()
     def chunk2frames(self, chunk: torch.Tensor):
         """ 
-        x: Chunk [batch_size, nframe, nbin] (?, 256, 256)
-        y: Output tensors [batch_size, nframe, nbin, 2*len_padding+1] (?, 256, 256, 33)
+        x: Chunk [batch_size, nframe, nbin]
+        y: Output tensors [batch_size, nframe, nbin, 2*len_padding+1]
         """
         pad_value = -80.0
         chunk = F.pad(chunk, (self.len_padding, self.len_padding), 'constant', value=pad_value)

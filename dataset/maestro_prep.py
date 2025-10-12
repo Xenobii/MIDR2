@@ -2,7 +2,6 @@ import os
 import json
 import h5py
 import pandas as pd
-import numpy as np
 from tqdm import tqdm
 
 from preprocessors.prep_wav import WavPreprocessor
@@ -12,7 +11,7 @@ from preprocessors.prep_midr import MidrPreprocessor
 class MaestroPreprocessor:
     def __init__(self, dir_maestro, prep_wav, prep_midr):
         self.maestro_dir = dir_maestro
-        self.df          = pd.read_csv(os.path.join(self.maestro_dir, "maestro-v3.0.0_demo.csv"))
+        self.df          = pd.read_csv(os.path.join(self.maestro_dir, "maestro-v3.0.0.csv"))
         self.f_out       = "dataset/processed_dataset.h5"
         self.prep_midr   = prep_midr
         self.prep_wav    = prep_wav
@@ -26,11 +25,13 @@ class MaestroPreprocessor:
 
                 spec_chunks = self.prep_wav(wav_path)
                 midr_chunks = self.prep_midr(midi_path)
-                print(len(spec_chunks))
-                print(len(midr_chunks["spiral_cc"]))
-                breakpoint()
-                assert len(spec_chunks) == len(midr_chunks["spiral_cc"]), \
-                    f"Chunk missmatch: {len(spec_chunks) - len(midr_chunks['spiral_cc'])}"
+                if len(spec_chunks) != len(midr_chunks['spiral_cc']):
+                    # wav will always be the longer one
+                    nchunks     = len(midr_chunks["spiral_cc"])
+                    spec_chunks = spec_chunks[:nchunks]
+
+                assert len(spec_chunks) == len(midr_chunks['spiral_cc']), \
+                f"Incompatible chunk length: Spec: {len(spec_chunks)}, Midr: {len(midr_chunks['spiral_cc'])}"
 
                 group = h5.create_group(f"{idx:07d}")
                 group.create_dataset("spec", data=spec_chunks, compression="lzf")
@@ -44,7 +45,7 @@ class MaestroPreprocessor:
                 group.attrs["title"]    = row["canonical_title"]
                 group.attrs["split"]    = row["split"]
                 
-                print(f"Processed: {row['canonical_title']}")
+                tqdm.write(f"Processed: {row['canonical_composer']} {row['canonical_title']}")
                 
             print(f"Finished processing! Dataset saved at {self.f_out}")
 
