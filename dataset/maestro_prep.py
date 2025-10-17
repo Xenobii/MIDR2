@@ -35,8 +35,8 @@ class MaestroPreprocessor:
 
                 group = h5.create_group(f"{idx:07d}")
                 group.create_dataset("spec", data=spec_chunks, compression="lzf")
-                group.create_dataset("circle_cd", data=midr_chunks["circle_cd"], compression="lzf")
-                group.create_dataset("circle_cc", data=midr_chunks["circle_cc"], compression="lzf")
+                # group.create_dataset("circle_cd", data=midr_chunks["circle_cd"], compression="lzf")
+                # group.create_dataset("circle_cc", data=midr_chunks["circle_cc"], compression="lzf")
                 group.create_dataset("spiral_cd", data=midr_chunks["spiral_cd"], compression="lzf")
                 group.create_dataset("spiral_cc", data=midr_chunks["spiral_cc"], compression="lzf")
                 

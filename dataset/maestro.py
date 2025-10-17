@@ -29,13 +29,13 @@ class MaestroDataset(Dataset):
     def __getitem__(self, idx):
         track_key, chunk_idx = self.index[idx]
         if self._h5 == None:
-            self._h5 = h5py.File(self.h5_path, "r")
+            self._h5 = h5py.File(self.h5_path, "r", swmr=True)
 
-        spec      = torch.from_numpy(self._h5[track_key]["spec"][chunk_idx][...])
-        circle_cd = torch.from_numpy(self._h5[track_key]["circle_cd"][chunk_idx][...])
-        circle_cc = torch.from_numpy(self._h5[track_key]["circle_cc"][chunk_idx][...])
-        spiral_cd = torch.from_numpy(self._h5[track_key]["spiral_cd"][chunk_idx][...])
-        spiral_cc = torch.from_numpy(self._h5[track_key]["spiral_cc"][chunk_idx][...])
+        spec      = torch.from_numpy(self._h5[track_key]["spec"][chunk_idx])
+        # circle_cd = torch.from_numpy(self._h5[track_key]["circle_cd"][chunk_idx][...])
+        # circle_cc = torch.from_numpy(self._h5[track_key]["circle_cc"][chunk_idx][...])
+        spiral_cd = torch.from_numpy(self._h5[track_key]["spiral_cd"][chunk_idx])
+        spiral_cc = torch.from_numpy(self._h5[track_key]["spiral_cc"][chunk_idx])
         
         if self.transform is not None:
             spec = self.transform(spec)

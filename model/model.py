@@ -51,6 +51,9 @@ class Model(nn.Module):
             nn.Linear(self.note_dim*self.frame_dim, 3),
         )
 
+    def count_parameters(self):
+        return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
     def chunk2frames(self, chunk: torch.Tensor):
         """ 
         x: Chunk [batch_size, nframe, nbin]

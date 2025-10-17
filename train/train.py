@@ -30,17 +30,19 @@ class Trainer():
             self.device = 'cuda'
         else:
             self.device = 'cpu'
+        print(f"Training on {self.device}")
 
         # Model settings
         self.model = Model(config)
         self.model = self.model.to(self.device)
+        print(f"Trainable model parameters: {sum(p.numel() for p in self.model.parameters() if p.requires_grad)}")
 
         # Training settings
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
         self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer)
 
-        self.criterion_spiral_cc = nn.MSELoss()
-        self.criterion_spiral_cd = nn.MSELoss()
+        self.criterion_spiral_cc = nn.L1Loss()
+        self.criterion_spiral_cd = nn.L1Loss()
 
         # Dataset loading
         f_dataset = 'dataset/processed_dataset.h5'
@@ -97,18 +99,18 @@ class Trainer():
         pbar = tqdm(self.dataloader_train, desc="Training", leave=False)
 
         for spec, output_spiral_cd, output_spiral_cc in pbar:
-            spec            = spec.to(self.device)
-            label_spiral_cd = output_spiral_cd.to(self.device)
-            label_spiral_cc = output_spiral_cc.to(self.device)
+            spec            = spec.to(self.device, non_blocking=True)
+            label_spiral_cd = output_spiral_cd.to(self.device, non_blocking=True)
+            label_spiral_cc = output_spiral_cc.to(self.device, non_blocking=True)
         
             self.optimizer.zero_grad()
             output_spiral_cd, output_spiral_cc = self.model(spec)
 
             # flatten
-            label_spiral_cd  = label_spiral_cd.contiguous().view(-1)
-            label_spiral_cc  = label_spiral_cc.contiguous().view(-1)
-            output_spiral_cd = output_spiral_cd.contiguous().view(-1)
-            output_spiral_cc = output_spiral_cc.contiguous().view(-1)
+            # label_spiral_cd  = label_spiral_cd.contiguous().view(-1)
+            # label_spiral_cc  = label_spiral_cc.contiguous().view(-1)
+            # output_spiral_cd = output_spiral_cd.contiguous().view(-1)
+            # output_spiral_cc = output_spiral_cc.contiguous().view(-1)
 
             loss_spiral_cd = self.criterion_spiral_cd(label_spiral_cd, output_spiral_cd)
             loss_spiral_cc = self.criterion_spiral_cc(label_spiral_cc, output_spiral_cc)
@@ -129,18 +131,18 @@ class Trainer():
         
         with torch.no_grad():
             for i, (spec, output_spiral_cd, output_spiral_cc) in enumerate(self.dataloader_valid):
-                spec            = spec.to(self.device)
-                label_spiral_cd = output_spiral_cd.to(self.device)
-                label_spiral_cc = output_spiral_cc.to(self.device)
+                spec            = spec.to(self.device, non_blocking=True)
+                label_spiral_cd = output_spiral_cd.to(self.device, non_blocking=True)
+                label_spiral_cc = output_spiral_cc.to(self.device, non_blocking=True)
             
-                self.optimizer.zero_grad()
+                # self.optimizer.zero_grad()
                 output_spiral_cd, output_spiral_cc = self.model(spec)
 
                 # flatten
-                label_spiral_cd  = label_spiral_cd.contiguous().view(-1)
-                label_spiral_cc  = label_spiral_cc.contiguous().view(-1)
-                output_spiral_cd = output_spiral_cd.contiguous().view(-1)
-                output_spiral_cc = output_spiral_cc.contiguous().view(-1)
+                # label_spiral_cd  = label_spiral_cd.contiguous().view(-1)
+                # label_spiral_cc  = label_spiral_cc.contiguous().view(-1)
+                # output_spiral_cd = output_spiral_cd.contiguous().view(-1)
+                # output_spiral_cc = output_spiral_cc.contiguous().view(-1)
 
                 loss_spiral_cd = self.criterion_spiral_cd(label_spiral_cd, output_spiral_cd)
                 loss_spiral_cc = self.criterion_spiral_cc(label_spiral_cc, output_spiral_cc)
