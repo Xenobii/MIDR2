@@ -126,8 +126,6 @@ class Spiral:
         self.center = np.array([x_mean, y_mean, z_mean], dtype=np.float32)
 
         if len(pitches) > 1:
-            self.diameter = np.max(pdist(np.stack([x, y, z], axis=1)))
+            self.diameter = 1 + np.max(pdist(np.stack([x, y, z], axis=1)))
         else:
             self.diameter = 0.0
-    
-    

@@ -7,8 +7,10 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
+from torch.nn.utils import clip_grad_norm_
+from torch.amp import autocast, GradScaler
 
-from model.model import Model
+from model.model import Model, SNAModel
 from dataset.maestro import MaestroDataset
 
 
@@ -33,16 +35,29 @@ class Trainer():
         print(f"Training on {self.device}")
 
         # Model settings
-        self.model = Model(config)
+        self.model = SNAModel(config)
         self.model = self.model.to(self.device)
         print(f"Trainable model parameters: {sum(p.numel() for p in self.model.parameters() if p.requires_grad)}")
+        # def count_parameters(model):
+        #     total_params = 0
+        #     for name, parameter in model.named_parameters():
+        #         if not parameter.requires_grad:
+        #             continue
+        #         params = parameter.numel()
+        #         print(f"{name}: {params}")
+        #         total_params += params
+        #     print(f"Total Trainable Params: {total_params}")
+        #     return total_params
+        
+        # count_parameters(self.model)
 
         # Training settings
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
         self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer)
+        self.scaler    = GradScaler(enabled=(self.device == 'cuda'))
 
-        self.criterion_spiral_cc = nn.L1Loss()
-        self.criterion_spiral_cd = nn.L1Loss()
+        self.criterion_spiral_cc = nn.L1Loss(reduction='none')
+        self.criterion_spiral_cd = nn.L1Loss(reduction='none')
 
         # Dataset loading
         f_dataset = 'dataset/processed_dataset.h5'
@@ -70,11 +85,11 @@ class Trainer():
     def train(self):
         os.makedirs("model/checkpoints", exist_ok=True)
         for epoch in range(self.epochs):
+            print(f"-- Epoch {epoch} --")
             t0 = time.time()
             epoch_loss_train = self.step_train()
             epoch_loss_valid = self.step_valid()
             t1 = time.time()
-            print(f"-- Epoch {epoch} --")
             print(f"Training time: {(t1-t0):.3f} seconds")
             print(f"Training Loss: {epoch_loss_train}")
             print(f"Validation Loss: {epoch_loss_valid}")
@@ -95,57 +110,79 @@ class Trainer():
     def step_train(self):
         self.model.train()
         epoch_loss = 0
+        epoch_loss_cc = 0 
+        epoch_loss_cd = 0 
+        eps = 1e-8
 
         pbar = tqdm(self.dataloader_train, desc="Training", leave=False)
 
-        for spec, output_spiral_cd, output_spiral_cc in pbar:
+        for spec, label_spiral_cd, label_spiral_cc, note_mask in pbar:
             spec            = spec.to(self.device, non_blocking=True)
-            label_spiral_cd = output_spiral_cd.to(self.device, non_blocking=True)
-            label_spiral_cc = output_spiral_cc.to(self.device, non_blocking=True)
+            label_spiral_cd = label_spiral_cd.to(self.device, non_blocking=True)
+            label_spiral_cc = label_spiral_cc.to(self.device, non_blocking=True)
+            
+            note_mask = note_mask.to(dtype=torch.float32, device=self.device, non_blocking=True)
         
-            self.optimizer.zero_grad()
-            output_spiral_cd, output_spiral_cc = self.model(spec)
+            self.optimizer.zero_grad(set_to_none=True)
 
-            # flatten
-            # label_spiral_cd  = label_spiral_cd.contiguous().view(-1)
-            # label_spiral_cc  = label_spiral_cc.contiguous().view(-1)
-            # output_spiral_cd = output_spiral_cd.contiguous().view(-1)
-            # output_spiral_cc = output_spiral_cc.contiguous().view(-1)
+            # AMP
+            with autocast(device_type=self.device, dtype=torch.float16):
+                # Forward
+                output_spiral_cd, output_spiral_cc = self.model(spec)
+                
+                # Calculate loss
+                loss_spiral_cd = self.criterion_spiral_cd(label_spiral_cd, output_spiral_cd)
+                loss_spiral_cc = self.criterion_spiral_cc(label_spiral_cc, output_spiral_cc)
+                
+                # Apply mask
+                loss_spiral_cd = (loss_spiral_cd * note_mask).sum() / (note_mask.sum() + eps)
+                loss_spiral_cc = (loss_spiral_cc * note_mask).sum() / (note_mask.sum() + eps)
+                
+                loss = loss_spiral_cd + loss_spiral_cc
 
-            loss_spiral_cd = self.criterion_spiral_cd(label_spiral_cd, output_spiral_cd)
-            loss_spiral_cc = self.criterion_spiral_cc(label_spiral_cc, output_spiral_cc)
-            loss = loss_spiral_cd + loss_spiral_cc
+            # Scale & Backward
+            self.scaler.scale(loss).backward()
+            self.scaler.unscale_(self.optimizer)
+            # clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
 
-            loss.backward()
-            self.optimizer.step()
+            # Epoch loss
             epoch_loss += loss.item()
+            epoch_loss_cc += loss_spiral_cc.item()
+            epoch_loss_cd += loss_spiral_cd.item()
 
-            pbar.set_postfix(loss=loss.item())
+            pbar.set_postfix(loss=f"{loss.item():.4f}")
 
         pbar.close()
+        print(f"CC loss: {epoch_loss_cc / len(self.dataloader_train)}")
+        print(f"CD loss: {epoch_loss_cd / len(self.dataloader_train)}")
         return epoch_loss / len(self.dataloader_train)
     
     def step_valid(self):
         self.model.eval()
         epoch_loss = 0
+        eps = 1e-8
         
-        with torch.no_grad():
-            for i, (spec, output_spiral_cd, output_spiral_cc) in enumerate(self.dataloader_valid):
+        with torch.no_grad(), autocast(device_type=self.device, dtype=torch.float16):
+            for i, (spec, label_spiral_cd, label_spiral_cc, note_mask) in enumerate(self.dataloader_valid):
                 spec            = spec.to(self.device, non_blocking=True)
-                label_spiral_cd = output_spiral_cd.to(self.device, non_blocking=True)
-                label_spiral_cc = output_spiral_cc.to(self.device, non_blocking=True)
-            
-                # self.optimizer.zero_grad()
+                label_spiral_cd = label_spiral_cd.to(self.device, non_blocking=True)
+                label_spiral_cc = label_spiral_cc.to(self.device, non_blocking=True)
+                
+                note_mask = note_mask.to(dtype=torch.float32, device=self.device, non_blocking=True)
+
+                # Forward
                 output_spiral_cd, output_spiral_cc = self.model(spec)
-
-                # flatten
-                # label_spiral_cd  = label_spiral_cd.contiguous().view(-1)
-                # label_spiral_cc  = label_spiral_cc.contiguous().view(-1)
-                # output_spiral_cd = output_spiral_cd.contiguous().view(-1)
-                # output_spiral_cc = output_spiral_cc.contiguous().view(-1)
-
+                
+                # Calculate Loss
                 loss_spiral_cd = self.criterion_spiral_cd(label_spiral_cd, output_spiral_cd)
                 loss_spiral_cc = self.criterion_spiral_cc(label_spiral_cc, output_spiral_cc)
+
+                # Mask
+                loss_spiral_cd = (loss_spiral_cd * note_mask).sum() / (note_mask.sum() + eps)
+                loss_spiral_cc = (loss_spiral_cc * note_mask).sum() / (note_mask.sum() + eps)
+                
                 loss = loss_spiral_cd + loss_spiral_cc
 
                 epoch_loss += loss.item()

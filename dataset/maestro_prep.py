@@ -35,12 +35,10 @@ class MaestroPreprocessor:
 
                 group = h5.create_group(f"{idx:07d}")
                 group.create_dataset("spec", data=spec_chunks, compression="lzf")
-                # group.create_dataset("circle_cd", data=midr_chunks["circle_cd"], compression="lzf")
-                # group.create_dataset("circle_cc", data=midr_chunks["circle_cc"], compression="lzf")
                 group.create_dataset("spiral_cd", data=midr_chunks["spiral_cd"], compression="lzf")
                 group.create_dataset("spiral_cc", data=midr_chunks["spiral_cc"], compression="lzf")
+                group.create_dataset("note_mask", data=midr_chunks["note_mask"], compression="lzf")
                 
-                # group.create_dataset("midr", data=midr_chunks, compression="lzf")
                 group.attrs["composer"] = row["canonical_composer"]
                 group.attrs["title"]    = row["canonical_title"]
                 group.attrs["split"]    = row["split"]
@@ -56,6 +54,6 @@ if __name__=="__main__":
         config = json.load(f)
 
     prep_midr = MidrPreprocessor(config)
-    prep_wav = WavPreprocessor(config)
+    prep_wav  = WavPreprocessor(config)
     processor = MaestroPreprocessor(dir_maestro, prep_wav, prep_midr)
     processor.process_all()

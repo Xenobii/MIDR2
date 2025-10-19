@@ -26,7 +26,7 @@ class MidrPreprocessor:
         
         assert len(midi.instruments) == 1, f"Model is finetuned for single instrument"
         
-        chroma = midi.instruments[0].get_chroma(fs=self.fs, pedal_threshold=128)
+        chroma = midi.instruments[0].get_chroma(fs=self.fs, pedal_threshold=120)
         
         # arrange chroma in circle of fifths
         circle_of_fifths = np.array([0, 7, 2, 9, 4, 11, 6, 1, 8, 3, 10, 5])
@@ -36,10 +36,11 @@ class MidrPreprocessor:
     
     def chroma2midr(self, chroma):
         nframe      = len(chroma)
-        a_circle_cc = np.zeros((nframe, 2), dtype=np.float32)
+        a_circle_cc = 5 * np.ones((nframe, 2), dtype=np.float32)
         a_circle_cd = np.zeros((nframe, 1), dtype=np.float32)
-        a_spiral_cc = np.zeros((nframe, 3), dtype=np.float32)
+        a_spiral_cc = 5 * np.ones((nframe, 3), dtype=np.float32)
         a_spiral_cd = np.zeros((nframe, 1), dtype=np.float32)
+        a_note_mask = np.zeros((nframe, 1), dtype=np.bool)
 
         for i in range(nframe):
             pitches = np.nonzero(chroma[i])[0]
@@ -59,12 +60,14 @@ class MidrPreprocessor:
         a_circle_cd = self.midr2chunks(torch.from_numpy(a_circle_cd))
         a_spiral_cc = self.midr2chunks(torch.from_numpy(a_spiral_cc))
         a_spiral_cd = self.midr2chunks(torch.from_numpy(a_spiral_cd))
+        a_note_mask = a_spiral_cd != 0
 
         a_midr = {
             'circle_cc' : a_circle_cc,
             'circle_cd' : a_circle_cd,
             'spiral_cc' : a_spiral_cc,
             'spiral_cd' : a_spiral_cd,
+            'note_mask' : a_note_mask
         }
         return a_midr
     

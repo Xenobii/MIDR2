@@ -2,9 +2,11 @@ import math
 import json
 import torch
 import torchaudio
+import librosa
 
 import torch.nn.functional as F
 import torchaudio.transforms as T
+from nnAudio.features import CQT1992v2
 
 import matplotlib.pyplot as plt
 import librosa
@@ -13,30 +15,47 @@ import librosa
 class WavPreprocessor():
     def __init__(self, config):
         # spec
-        self.sr         = config['spec']['sr']
-        self.hop_length = config['spec']['hop_sample']
-        self.mel_bins   = config['spec']['mel_bins']
-        self.n_bins     = config['spec']['n_bins']
-        self.n_fft      = config['spec']['fft_bins']
-        self.win_length = config['spec']['window_length']
-        self.log_offset = config['spec']['log_offset']
-        self.window     = config['spec']['window']
-        self.pad_mode   = config['spec']['pad_mode']
+        self.spec_type       = config['spec']['spec_type']
+        self.sr              = config['spec']['sr']
+        self.hop_length      = config['spec']['hop_sample']
+        self.mel_bins        = config['spec']['mel_bins']
+        self.n_bins          = config['spec']['n_bins']
+        self.n_fft           = config['spec']['fft_bins']
+        self.win_length      = config['spec']['window_length']
+        self.log_offset      = config['spec']['log_offset']
+        self.window          = config['spec']['window']
+        self.pad_mode        = config['spec']['pad_mode']
+        self.bins_per_octave = config['spec']['bins_per_octave']
+        self.fmin            = config['spec']['fmin']
+        self.fmax            = config['spec']['fmax']
 
         # input
         self.nframe      = config['input']['nframe']
         self.len_padding = config['input']['len_padding']
 
         # operations
-        self.melspec = T.MelSpectrogram(
-            sample_rate = self.sr,
-            n_fft       = self.n_fft,
-            win_length  = self.win_length,
-            hop_length  = self.hop_length,
-            pad_mode    = self.pad_mode,
-            n_mels      = self.mel_bins,
-            norm        = 'slaney'
-        )
+        self.spec_transform = None
+        if self.spec_type == "log-mel":
+            self.spec_transform = T.MelSpectrogram(
+                sample_rate = self.sr,
+                n_fft       = self.n_fft,
+                win_length  = self.win_length,
+                hop_length  = self.hop_length,
+                pad_mode    = self.pad_mode,
+                n_mels      = self.mel_bins,
+                norm        = 'slaney'
+            )
+        elif self.spec_type == "cqt":
+            self.spec_transform = CQT1992v2(
+                sr              = self.sr,
+                hop_length      = self.hop_length,
+                fmin            = self.fmin,
+                fmax            = self.fmax,
+                n_bins          = self.n_bins,
+                bins_per_octave = self.bins_per_octave,
+                window          = self.window,
+                trainable       = False
+            )
 
     @torch.inference_mode()
     def wav2spec(self, f_wav):
@@ -46,7 +65,7 @@ class WavPreprocessor():
         wave = torch.mean(wave, dim=0)
         wave = resampler(wave)
 
-        spec = self.melspec(wave)
+        spec = self.spec_transform(wave)
         spec = torch.log(spec + self.log_offset).squeeze(0)
 
         return spec
@@ -72,14 +91,19 @@ class WavPreprocessor():
         return x
     
     def plot_spec(self, spec):
-        sr = self.sr
-        
         plt.figure(figsize=(10, 4))
-        librosa.display.specshow(
-            spec.numpy(),
-            sr=sr,
-            cmap="magma"
-        )
+        if self.spec_type == "log-mel":
+            librosa.display.specshow(
+                spec,
+                sr=self.sr,
+                cmap="magma"
+            )
+        if self.spec_type == "cqt":
+            librosa.display.specshow(
+                spec,
+                sr=self.sr,
+                cmap="magma"
+            )
         plt.title("Spec")
         plt.tight_layout()
         plt.show()
@@ -94,5 +118,6 @@ if __name__=="__main__":
     f_wav = "test_files/test_wav.WAV"
     spec = preproc.wav2spec(f_wav)
     chunks = preproc.spec2chunks(spec)
+    print(chunks.shape)
 
-    preproc.plot_spec(chunks[60])
+    preproc.plot_spec(spec)

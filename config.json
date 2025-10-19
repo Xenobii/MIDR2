@@ -1,14 +1,18 @@
 {   
     "spec": {
-        "sr"           : 16000,
-        "hop_sample"   : 256,
-        "mel_bins"     : 256,
-        "n_bins"       : 256,
-        "fft_bins"     : 2048,
-        "window_length": 2048,
-        "log_offset"   : 1e-8,
-        "window"       : "hann",
-        "pad_mode"     : "constant"
+        "spec_type"      : "cqt",
+        "sr"             : 16000,
+        "hop_sample"     : 256,
+        "mel_bins"       : 256,
+        "n_bins"         : 256,
+        "fft_bins"       : 2048,
+        "window_length"  : 2048,
+        "log_offset"     : 1e-8,
+        "window"         : "hann",
+        "pad_mode"       : "constant",
+        "bins_per_octave": 36,
+        "fmin"           : 27.5,
+        "fmax"           : 8000
     },
     "input": {
         "nframe"     : 128,
@@ -32,14 +36,14 @@
         },
         "spiral": {
             "radius"  : 1,
-            "height"  : 12,
+            "height"  : 6,
             "weighted": true
         }
     },
     "training": {
         "lr"         : 0.001,
-        "batch_size" : 64,
+        "batch_size" : 128,
         "num_workers": 4,
-        "epochs"     : 16
+        "epochs"     : 64
     }
 }
