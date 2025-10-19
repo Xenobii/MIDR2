@@ -104,6 +104,8 @@ class SNAModel(nn.Module):
         self.len_padding = config['input']['len_padding']
         self.npitch      = config['midi']['num_notes']
 
+        self.center_scale = config['midr']['spiral']['height'] * 2
+
         self.layernorm = nn.LayerNorm(normalized_shape=self.nbin)
 
         self.conv1d = nn.Sequential(
@@ -160,7 +162,8 @@ class SNAModel(nn.Module):
             nn.LeakyReLU(),
             nn.Linear(88, 12),
             nn.LeakyReLU(),
-            nn.Linear(12, 3)
+            nn.Linear(12, 3),
+            nn.Tanh()
         )
 
         self.fc_diam = nn.Sequential(
@@ -168,7 +171,8 @@ class SNAModel(nn.Module):
             nn.LeakyReLU(),
             nn.Linear(88, 12),
             nn.LeakyReLU(),
-            nn.Linear(12, 1)
+            nn.Linear(12, 1),
+            nn.ReLU()
         )
     
     def forward(self, x: torch.Tensor):
@@ -194,7 +198,7 @@ class SNAModel(nn.Module):
         spiral_cc = self.fc_center(x)
         # [B*nframe, 3]
         spiral_cd = spiral_cd.reshape(batch_size, self.nframe, 1)
-        spiral_cc = spiral_cc.reshape(batch_size, self.nframe, 3)
+        spiral_cc = spiral_cc.reshape(batch_size, self.nframe, 3) * self.center_scale
         return spiral_cd, spiral_cc
     
 
