@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 from torch.nn.utils import clip_grad_norm_
 from torch.amp import autocast, GradScaler
 
-from model.model import Model, SNAModel
+from model.model import Model, SNAModel, DilatedSNAModel
 from dataset.maestro import MaestroDataset
 
 
@@ -35,7 +35,7 @@ class Trainer():
         print(f"Training on {self.device}")
 
         # Model settings
-        self.model = SNAModel(config)
+        self.model = DilatedSNAModel(config)
         self.model = self.model.to(self.device)
         print(f"Trainable model parameters: {sum(p.numel() for p in self.model.parameters() if p.requires_grad)}")
         # def count_parameters(model):
@@ -83,7 +83,7 @@ class Trainer():
         print(f"Initialized trainer in {(t1 - t0):.3f} seconds")
 
     def train(self):
-        os.makedirs("model/checkpoints", exist_ok=True)
+        os.makedirs("model/checkpoints_wrapped", exist_ok=True)
         for epoch in range(self.epochs):
             print(f"-- Epoch {epoch} --")
             t0 = time.time()
@@ -110,7 +110,7 @@ class Trainer():
                 'optimizer_dict'     : self.optimizer.state_dict(),
                 'model_dict'         : self.model.state_dict()
             }, f'model/checkpoints/checkpoint_{epoch}.pth')
-            print(f"Checkpoint saved at: model/checkpoints/checkpoint{epoch}.pth")
+            print(f"Checkpoint saved at: model/checkpoints_wrapped/checkpoint_{epoch}.pth")
 
             self.scheduler.step(epoch_loss_valid)
 

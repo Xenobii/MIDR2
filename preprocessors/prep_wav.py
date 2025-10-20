@@ -100,7 +100,7 @@ class WavPreprocessor():
             )
         if self.spec_type == "cqt":
             librosa.display.specshow(
-                spec,
+                spec.numpy(),
                 sr=self.sr,
                 cmap="magma"
             )
@@ -118,6 +118,6 @@ if __name__=="__main__":
     f_wav = "test_files/test_wav.WAV"
     spec = preproc.wav2spec(f_wav)
     chunks = preproc.spec2chunks(spec)
-    print(chunks.shape)
+    # print(chunks.shape)
 
     preproc.plot_spec(spec)
