@@ -35,7 +35,7 @@ class Trainer():
         print(f"Training on {self.device}")
 
         # Model settings
-        self.model = DilatedSNAModel(config)
+        self.model = SNAModel(config)
         self.model = self.model.to(self.device)
         print(f"Trainable model parameters: {sum(p.numel() for p in self.model.parameters() if p.requires_grad)}")
         # def count_parameters(model):
@@ -56,8 +56,8 @@ class Trainer():
         self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer)
         self.scaler    = GradScaler(enabled=(self.device == 'cuda'))
 
-        self.criterion_spiral_cc = nn.L1Loss(reduction='none')
-        self.criterion_spiral_cd = nn.L1Loss(reduction='none')
+        self.criterion_spiral_cc = nn.HuberLoss(reduction='none')
+        self.criterion_spiral_cd = nn.HuberLoss(reduction='none')
 
         # Dataset loading
         f_dataset = 'dataset/processed_dataset.h5'
@@ -83,7 +83,7 @@ class Trainer():
         print(f"Initialized trainer in {(t1 - t0):.3f} seconds")
 
     def train(self):
-        os.makedirs("model/checkpoints_wrapped", exist_ok=True)
+        os.makedirs("model/checkpoints2", exist_ok=True)
         for epoch in range(self.epochs):
             print(f"-- Epoch {epoch} --")
             t0 = time.time()
@@ -109,8 +109,8 @@ class Trainer():
                 'epoch_loss_valid_cc': epoch_loss_valid_cc,
                 'optimizer_dict'     : self.optimizer.state_dict(),
                 'model_dict'         : self.model.state_dict()
-            }, f'model/checkpoints/checkpoint_{epoch}.pth')
-            print(f"Checkpoint saved at: model/checkpoints_wrapped/checkpoint_{epoch}.pth")
+            }, f'model/checkpoints2/checkpoint_{epoch}.pth')
+            print(f"Checkpoint saved at: model/checkpoints2/checkpoint_{epoch}.pth")
 
             self.scheduler.step(epoch_loss_valid)
 
@@ -194,8 +194,10 @@ class Trainer():
                 loss_spiral_cc = self.criterion_spiral_cc(label_spiral_cc, output_spiral_cc)
 
                 # Mask
-                loss_spiral_cd = (loss_spiral_cd * note_mask).sum() / (note_mask.sum() + eps)
-                loss_spiral_cc = (loss_spiral_cc * note_mask).sum() / (note_mask.sum() + eps)
+                mask_cd = note_mask.expand_as(loss_spiral_cd)
+                mask_cc = note_mask.expand_as(loss_spiral_cc)
+                loss_spiral_cd = (loss_spiral_cd * mask_cd).sum() / (mask_cd.sum() + eps)
+                loss_spiral_cc = (loss_spiral_cc * mask_cc).sum() / (mask_cc.sum() + eps)
                 
                 loss = loss_spiral_cd + loss_spiral_cc
 

@@ -104,12 +104,11 @@ class SNAModel(nn.Module):
         self.len_padding = config['input']['len_padding']
         self.npitch      = config['midi']['num_notes']
 
-        self.center_scale = torch.tensor([
+        self.register_buffer('center_scale', torch.tensor([
             config['midr']['spiral']['radius'],  # x
             config['midr']['spiral']['radius'],  # y
             config['midr']['spiral']['height']   # z
-        ], dtype=torch.float32)
-
+        ], dtype=torch.float32))
         self.layernorm = nn.LayerNorm(normalized_shape=self.nbin)
 
         self.conv1d = nn.Sequential(
@@ -162,7 +161,13 @@ class SNAModel(nn.Module):
         )
 
         self.fc_center = nn.Sequential(
-            nn.Linear(3 * self.nbin, 88),
+            nn.Linear(self.nbin, 88),
+            nn.LeakyReLU(inplace=True),
+            nn.Linear(88, 256),
+            nn.LeakyReLU(inplace=True),
+            nn.Linear(256, 512),
+            nn.LeakyReLU(inplace=True),
+            nn.Linear(512, 88),
             nn.LeakyReLU(inplace=True),
             nn.Linear(88, 12),
             nn.LeakyReLU(inplace=True),
@@ -171,7 +176,11 @@ class SNAModel(nn.Module):
         )
 
         self.fc_diam = nn.Sequential(
-            nn.Linear(3 * self.nbin, 88),
+            nn.Linear(self.nbin, 88),
+            nn.LeakyReLU(inplace=True),
+            nn.Linear(88, 256),
+            nn.LeakyReLU(inplace=True),
+            nn.Linear(256, 88),
             nn.LeakyReLU(inplace=True),
             nn.Linear(88, 12),
             nn.LeakyReLU(inplace=True),
@@ -190,11 +199,7 @@ class SNAModel(nn.Module):
         x = self.conv1d(x)
         # [B*nframe, nbin]
         x = self.conv1darray(x).squeeze(1)
-        # [B*nframe, 1, nbin]
-        x = self.conv2spiral(x).permute(0, 2, 1)
-        # [B*nframe, 3, nbin]
-        x = self.flatten(x)
-        # [B*nframe, 3*nbin]
+        # [B*nframe, nbin]
         spiral_cd = self.fc_diam(x)
         # [B*nframe, 1]
         spiral_cc = self.fc_center(x)
@@ -232,7 +237,7 @@ class DilatedSNAModel(nn.Module):
                 padding=2,
                 stride=1
             ),
-            nn.LeakyReLU(),
+            nn.LeakyReLU(inplace=True),
         )
 
         self.dilconv = HarmonicDilation(self.nbin)
@@ -245,7 +250,7 @@ class DilatedSNAModel(nn.Module):
                 padding=5,
                 stride=3
             ),
-            nn.LeakyReLU()
+            nn.LeakyReLU(inplace=True)
         )
 
         self.conv2spiral = SpiralTransform(
@@ -256,19 +261,19 @@ class DilatedSNAModel(nn.Module):
         self.flatten = nn.Flatten(start_dim=1)
 
         self.fc_center = nn.Sequential(
-            nn.Linear(88*3, 88),
-            nn.LeakyReLU(),
+            nn.Linear(88, 88),
+            nn.LeakyReLU(inplace=True),
             nn.Linear(88, 12),
-            nn.LeakyReLU(),
+            nn.LeakyReLU(inplace=True),
             nn.Linear(12, 3),
             nn.Tanh()
         )
 
         self.fc_diam = nn.Sequential(
-            nn.Linear(88*3, 88),
-            nn.LeakyReLU(),
+            nn.Linear(88, 88),
+            nn.LeakyReLU(inplace=True),
             nn.Linear(88, 12),
-            nn.LeakyReLU(),
+            nn.LeakyReLU(inplace=True),
             nn.Linear(12, 1),
             nn.ReLU()
         )
@@ -287,10 +292,6 @@ class DilatedSNAModel(nn.Module):
         # [B*nframe, 20, 264]
         x = self.conv1d2(x).squeeze(1)
         # [B*nframe, 88]
-        x = self.conv2spiral(x).permute(0, 2, 1)
-        # [B*nframe, 3, 88]
-        x = self.flatten(x)
-        # [B*nframe, 3*88]
         spiral_cd = self.fc_diam(x)
         # [B*nframe, 1]
         spiral_cc = self.fc_center(x)
@@ -309,15 +310,30 @@ class HarmonicDilation(nn.Module):
 
         c_in  = 10
         c_out = 20
-        dilations = [36, 54, 72, 84, 92, 101, 108, 114]
+        # dilations = [36, 54, 72, 84, 92, 101, 108, 114]
+        dilations = [36, 54, 72]
 
         self.convs = nn.ModuleList([
             nn.Conv1d(c_in, c_out, 3, padding='same', dilation=d) for d in dilations
         ])
+        # self.conv_1 = nn.Conv1d(c_in, c_out, 3, padding='same', dilation=dilations[0])
+        # self.conv_2 = nn.Conv1d(c_in, c_out, 3, padding='same', dilation=dilations[1])
+        # self.conv_3 = nn.Conv1d(c_in, c_out, 3, padding='same', dilation=dilations[2])
+        # self.conv_4 = nn.Conv1d(c_in, c_out, 3, padding='same', dilation=dilations[3])
+        # self.conv_5 = nn.Conv1d(c_in, c_out, 3, padding='same', dilation=dilations[4])
+        # self.conv_6 = nn.Conv1d(c_in, c_out, 3, padding='same', dilation=dilations[5])
+        # self.conv_7 = nn.Conv1d(c_in, c_out, 3, padding='same', dilation=dilations[6])
+        # self.conv_8 = nn.Conv1d(c_in, c_out, 3, padding='same', dilation=dilations[7])
+
         self.relu = nn.ReLU()
 
     def forward(self, x):
-        return self.relu(sum(conv(x) for conv in self.convs))
+        x = torch.stack([conv(x) for conv in self.convs], dim=0)
+        x = x.sum(dim=0)
+        # x = self.conv_1(x) + self.conv_2(x) + self.conv_3(x) + self.conv_4(x) +\
+        #     self.conv_5(x) + self.conv_6(x) + self.conv_7(x) + self.conv_8(x)
+        x = self.relu(x)
+        return x
 
     
 
@@ -350,7 +366,7 @@ class SpiralTransform(nn.Module):
     def forward(self, x: torch.Tensor):
         """
         x: [B, F]
-        returns: [B, F, 3]  # weighted by the input amplitude
+        returns: [B, F, 3]
         """
         B, F = x.shape
         if F != self.freq_bins:

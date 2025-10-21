@@ -12,7 +12,7 @@ def plot_loss():
     valid_loss_cd = []
     valid_loss_cc = []
     
-    for path in sorted(glob.glob('model/checkpoints/checkpoint_*.pth')):
+    for path in sorted(glob.glob('model/checkpoints2/checkpoint_*.pth')):
         checkpoint = torch.load(path, map_location='cpu', weights_only=False)
         train_loss.append(checkpoint['epoch_loss_train'])
         train_loss_cd.append(checkpoint['epoch_loss_train_cd'])
