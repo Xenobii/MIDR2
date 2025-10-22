@@ -2,6 +2,7 @@ import os
 import time
 from tqdm import tqdm
 import json
+from argparse import ArgumentParser
 
 import torch
 import torch.nn as nn
@@ -10,17 +11,18 @@ from torch.utils.data import DataLoader
 from torch.nn.utils import clip_grad_norm_
 from torch.amp import autocast, GradScaler
 
-from model.model import Model, SNAModel, DilatedSNAModel
+from model.model import Model, SNAModel, Model2
 from dataset.maestro import MaestroDataset
 
 
 
 class Trainer():
-    def __init__(self, config, model_out):
+    def __init__(self, config, model_out, path):
         print(f"** Training model **")
         t0 = time.time()
         
         self.model_out   = model_out
+        self.path        = path
         self.lr          = config["training"]["lr"]
         self.batch_size  = config["training"]["batch_size"]
         self.num_workers = config["training"]["num_workers"]
@@ -35,7 +37,7 @@ class Trainer():
         print(f"Training on {self.device}")
 
         # Model settings
-        self.model = SNAModel(config)
+        self.model = Model2(config)
         self.model = self.model.to(self.device)
         print(f"Trainable model parameters: {sum(p.numel() for p in self.model.parameters() if p.requires_grad)}")
         # def count_parameters(model):
@@ -83,7 +85,7 @@ class Trainer():
         print(f"Initialized trainer in {(t1 - t0):.3f} seconds")
 
     def train(self):
-        os.makedirs("model/checkpoints2", exist_ok=True)
+        os.makedirs(f"model/{self.path}", exist_ok=True)
         for epoch in range(self.epochs):
             print(f"-- Epoch {epoch} --")
             t0 = time.time()
@@ -109,8 +111,8 @@ class Trainer():
                 'epoch_loss_valid_cc': epoch_loss_valid_cc,
                 'optimizer_dict'     : self.optimizer.state_dict(),
                 'model_dict'         : self.model.state_dict()
-            }, f'model/checkpoints2/checkpoint_{epoch}.pth')
-            print(f"Checkpoint saved at: model/checkpoints2/checkpoint_{epoch}.pth")
+            }, f'model/{self.path}/checkpoint_{epoch}.pth')
+            print(f"Checkpoint saved at: model/{self.path}/checkpoint_{epoch}.pth")
 
             self.scheduler.step(epoch_loss_valid)
 
@@ -212,8 +214,12 @@ class Trainer():
 
 
 if __name__=="__main__":
+    parser = ArgumentParser()
+    parser.add_argument('-p', '--path', default='model')
+    args = parser.parse_args()
+
     with open('config.json') as f:
         config = json.load(f)
     model_out = "model/model.pkl"
-    trainer = Trainer(config, model_out)
+    trainer = Trainer(config, model_out, args.path)
     trainer.train()

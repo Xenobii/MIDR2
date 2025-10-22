@@ -2,9 +2,10 @@ import torch
 import json
 import glob
 import matplotlib.pyplot as plt
+from argparse import ArgumentParser
 
 
-def plot_loss():
+def plot_loss(path):
     train_loss    = []
     train_loss_cd = []
     train_loss_cc = []
@@ -12,7 +13,7 @@ def plot_loss():
     valid_loss_cd = []
     valid_loss_cc = []
     
-    for path in sorted(glob.glob('model/checkpoints2/checkpoint_*.pth')):
+    for path in sorted(glob.glob(f'model/{path}/checkpoint_*.pth')):
         checkpoint = torch.load(path, map_location='cpu', weights_only=False)
         train_loss.append(checkpoint['epoch_loss_train'])
         train_loss_cd.append(checkpoint['epoch_loss_train_cd'])
@@ -59,7 +60,12 @@ def plot_loss():
 
 
 if __name__=="__main__":
+    parser = ArgumentParser()
+    parser.add_argument('-p', '--path', default='model')
+    args = parser.parse_args()
+    path = args.path
+
     with open('config.json') as f:
         config = json.load(f)
-    plot_loss()
+    plot_loss(path)
     

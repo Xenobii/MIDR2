@@ -12,6 +12,9 @@ import matplotlib.pyplot as plt
 import librosa
 
 
+import warnings
+warnings.filterwarnings("ignore", category=SyntaxWarning)
+
 class WavPreprocessor():
     def __init__(self, config):
         # spec
