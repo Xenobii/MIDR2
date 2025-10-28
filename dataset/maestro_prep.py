@@ -3,6 +3,7 @@ import json
 import h5py
 import pandas as pd
 from tqdm import tqdm
+from concurrent.futures import ProcessPoolExecutor
 
 from preprocessors.prep_wav import WavPreprocessor
 from preprocessors.prep_midr import MidrPreprocessor
@@ -21,7 +22,6 @@ class MaestroPreprocessor:
     def process_all(self):
         with h5py.File(self.f_out, "w") as h5:
             print(f"Processing maestro v3... \n")
-            trims = 0
             for idx, row in tqdm(self.df.iterrows(), total=len(self.df)):
                 midi_path = os.path.join(self.maestro_dir, row["midi_filename"])
                 wav_path  = os.path.join(self.maestro_dir, row["audio_filename"])
@@ -30,16 +30,22 @@ class MaestroPreprocessor:
                 midi_chunks = self.prep_midi(midi_path)
                 midr_chunks = self.prep_midr(midi_path)
 
-                if len(spec_chunks) != len(midi_chunks['mpe']):
-                    # wav will always be the longer one
-                    nchunks     = len(midi_chunks["mpe"])
-                    midr_chunks['spiral_cc'] = midr_chunks['spiral_cc'][:nchunks]
-                    midr_chunks['spiral_cd'] = midr_chunks['spiral_cd'][:nchunks]
-                    spec_chunks = spec_chunks[:nchunks]
-                    trims += 1
+                nchunks = min(
+                    len(spec_chunks),
+                    len(midi_chunks["mpe"]),
+                    len(midr_chunks['spiral_cc'])
+                )
+                # wav will always be the longer one
+                spec_chunks = spec_chunks[:nchunks]
+                for key in midi_chunks:
+                    midi_chunks[key] = midi_chunks[key][:nchunks]
+                for key in midr_chunks:
+                    midr_chunks[key] = midr_chunks[key][:nchunks]
 
                 assert len(spec_chunks) == len(midr_chunks['spiral_cc']), \
                 f"Incompatible chunk length: Spec: {len(spec_chunks)}, Midr: {len(midr_chunks['spiral_cc'])}"
+                assert len(spec_chunks) == len(midi_chunks['mpe']), \
+                f"Incompatible chunk length: Spec: {len(spec_chunks)}, Midr: {len(midi_chunks['mpe'])}"
 
                 group = h5.create_group(f"{idx:07d}")
                 group.create_dataset("spec", data=spec_chunks, compression="lzf")
@@ -61,7 +67,6 @@ class MaestroPreprocessor:
                 tqdm.write(f"Processed: {row['canonical_composer']} {row['canonical_title']}")
                 
             print(f"Finished processing! Dataset saved at {self.f_out}")
-            print(f"Number of chunk trims: {trims}")
 
 
 if __name__=="__main__":

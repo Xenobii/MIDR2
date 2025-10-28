@@ -221,7 +221,13 @@ class Trainer():
             pbar.set_postfix(loss=f"{loss.item():.4f}")
 
         pbar.close()
-        epoch_loss = epoch_loss / len(self.dataloader_train)
+
+        n_batches            = len(self.dataloader_train)
+        epoch_loss          /= n_batches
+        epoch_loss_mpe      /= n_batches
+        epoch_loss_onset    /= n_batches
+        epoch_loss_offset   /= n_batches
+        epoch_loss_velocity /= n_batches
         # epoch_loss_cd = epoch_loss_cd / len(self.dataloader_train)
         # epoch_loss_cc = epoch_loss_cc / len(self.dataloader_train)
         return epoch_loss, epoch_loss_mpe, epoch_loss_onset, epoch_loss_offset, epoch_loss_velocity
@@ -240,9 +246,10 @@ class Trainer():
 
         eps = 1e-8
         
-        with torch.no_grad(), autocast(device_type=self.device, dtype=torch.float16):
-            for i, (spec, label_mpe, label_onset, label_offset, label_velocity, label_cd, label_cc, note_mask) in enumerate(self.dataloader_valid):
-                spec     = spec.to(self.device, non_blocking=True)
+        with torch.no_grad():
+            pbar = tqdm(self.dataloader_valid, desc="Validation", leave=False)
+            for spec, label_mpe, label_onset, label_offset, label_velocity, label_cd, label_cc, note_mask in pbar:
+                spec = spec.to(self.device, non_blocking=True)
                 
                 label_mpe      = label_mpe.to(self.device, non_blocking=True)
                 label_onset    = label_onset.to(self.device, non_blocking=True)
@@ -286,7 +293,17 @@ class Trainer():
                 # epoch_loss_cd += loss_cd
                 # epoch_loss_cc += loss_cc
 
-        epoch_loss = epoch_loss / len(self.dataloader_valid)
+                pbar.set_postfix({"loss": f"{epoch_loss / (pbar.n + 1):.4f}"})
+        
+        pbar.close()
+
+        n_batches            = len(self.dataloader_train)
+        epoch_loss          /= n_batches
+        epoch_loss_mpe      /= n_batches
+        epoch_loss_onset    /= n_batches
+        epoch_loss_offset   /= n_batches
+        epoch_loss_velocity /= n_batches
+        
         # epoch_loss_cd = epoch_loss_cd / len(self.dataloader_valid)
         # epoch_loss_cc = epoch_loss_cc / len(self.dataloader_valid)
         return epoch_loss, epoch_loss_mpe, epoch_loss_onset, epoch_loss_offset, epoch_loss_velocity

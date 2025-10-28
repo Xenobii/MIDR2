@@ -1,7 +1,14 @@
 mido
+h5py
+librosa
 numpy
-pytorch
+matplotlib
+nnAudio
+torch
+pandas
 torchaudio
 torchvision
 soundfile
 pretty_midi
+scipy
+tqdm
