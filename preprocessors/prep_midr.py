@@ -36,9 +36,9 @@ class MidrPreprocessor:
     
     def chroma2midr(self, chroma):
         nframe      = len(chroma)
-        a_circle_cc = 5 * np.ones((nframe, 2), dtype=np.float32)
+        a_circle_cc = np.zeros((nframe, 2), dtype=np.float32)
         a_circle_cd = np.zeros((nframe, 1), dtype=np.float32)
-        a_spiral_cc = 5 * np.ones((nframe, 3), dtype=np.float32)
+        a_spiral_cc = np.zeros((nframe, 3), dtype=np.float32)
         a_spiral_cd = np.zeros((nframe, 1), dtype=np.float32)
         a_note_mask = np.zeros((nframe, 1), dtype=np.bool)
 
@@ -96,13 +96,22 @@ class MidrPreprocessor:
             raise ValueError(f"Expected a 2D array, got shape {chroma.shape}")
 
         plt.figure(figsize=(10, 4))
-        plt.imshow(
-            chroma,
-            aspect="auto",
-            origin="lower",
-            cmap="magma",
-            interpolation="nearest",
-        )
+        if isinstance(chroma, np.ndarray):
+            plt.imshow(
+                chroma,
+                aspect="auto",
+                origin="lower",
+                cmap="magma",
+                interpolation="nearest",
+            )
+        elif isinstance(chroma, torch.Tensor):
+            plt.imshow(
+                chroma.numpy(),
+                aspect="auto",
+                origin="lower",
+                cmap="magma",
+                interpolation="nearest",
+            )
         plt.colorbar(label="Velocity / Activation Strength")
         plt.title("Spec")
         plt.xlabel("Frame Index")

@@ -42,7 +42,7 @@
     },
     "training": {
         "lr"         : 0.001,
-        "batch_size" : 128,
+        "batch_size" : 32,
         "num_workers": 4,
         "epochs"     : 16
     }

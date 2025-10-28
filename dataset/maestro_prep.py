@@ -6,37 +6,52 @@ from tqdm import tqdm
 
 from preprocessors.prep_wav import WavPreprocessor
 from preprocessors.prep_midr import MidrPreprocessor
+from preprocessors.prep_midi import MidiPreprocessor
 
 
 class MaestroPreprocessor:
-    def __init__(self, dir_maestro, prep_wav, prep_midr):
+    def __init__(self, dir_maestro, prep_wav, prep_midi, prep_midr):
         self.maestro_dir = dir_maestro
         self.df          = pd.read_csv(os.path.join(self.maestro_dir, "maestro-v3.0.0.csv"))
         self.f_out       = "dataset/processed_dataset.h5"
         self.prep_midr   = prep_midr
         self.prep_wav    = prep_wav
+        self.prep_midi   = prep_midi
 
     def process_all(self):
         with h5py.File(self.f_out, "w") as h5:
             print(f"Processing maestro v3... \n")
+            trims = 0
             for idx, row in tqdm(self.df.iterrows(), total=len(self.df)):
                 midi_path = os.path.join(self.maestro_dir, row["midi_filename"])
                 wav_path  = os.path.join(self.maestro_dir, row["audio_filename"])
 
                 spec_chunks = self.prep_wav(wav_path)
+                midi_chunks = self.prep_midi(midi_path)
                 midr_chunks = self.prep_midr(midi_path)
-                if len(spec_chunks) != len(midr_chunks['spiral_cc']):
+
+                if len(spec_chunks) != len(midi_chunks['mpe']):
                     # wav will always be the longer one
-                    nchunks     = len(midr_chunks["spiral_cc"])
+                    nchunks     = len(midi_chunks["mpe"])
+                    midr_chunks['spiral_cc'] = midr_chunks['spiral_cc'][:nchunks]
+                    midr_chunks['spiral_cd'] = midr_chunks['spiral_cd'][:nchunks]
                     spec_chunks = spec_chunks[:nchunks]
+                    trims += 1
 
                 assert len(spec_chunks) == len(midr_chunks['spiral_cc']), \
                 f"Incompatible chunk length: Spec: {len(spec_chunks)}, Midr: {len(midr_chunks['spiral_cc'])}"
 
                 group = h5.create_group(f"{idx:07d}")
                 group.create_dataset("spec", data=spec_chunks, compression="lzf")
+
+                group.create_dataset("mpe", data=midi_chunks["mpe"], compression="lzf")
+                group.create_dataset("onset", data=midi_chunks["onset"], compression="lzf")
+                group.create_dataset("offset", data=midi_chunks["offset"], compression="lzf")
+                group.create_dataset("velocity", data=midi_chunks["velocity"], compression="lzf")
+
                 group.create_dataset("spiral_cd", data=midr_chunks["spiral_cd"], compression="lzf")
                 group.create_dataset("spiral_cc", data=midr_chunks["spiral_cc"], compression="lzf")
+
                 group.create_dataset("note_mask", data=midr_chunks["note_mask"], compression="lzf")
                 
                 group.attrs["composer"] = row["canonical_composer"]
@@ -46,6 +61,7 @@ class MaestroPreprocessor:
                 tqdm.write(f"Processed: {row['canonical_composer']} {row['canonical_title']}")
                 
             print(f"Finished processing! Dataset saved at {self.f_out}")
+            print(f"Number of chunk trims: {trims}")
 
 
 if __name__=="__main__":
@@ -54,6 +70,7 @@ if __name__=="__main__":
         config = json.load(f)
 
     prep_midr = MidrPreprocessor(config)
+    prep_midi = MidiPreprocessor(config)
     prep_wav  = WavPreprocessor(config)
-    processor = MaestroPreprocessor(dir_maestro, prep_wav, prep_midr)
+    processor = MaestroPreprocessor(dir_maestro, prep_wav, prep_midi, prep_midr)
     processor.process_all()

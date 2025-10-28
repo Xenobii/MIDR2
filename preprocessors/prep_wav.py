@@ -3,6 +3,7 @@ import json
 import torch
 import torchaudio
 import librosa
+import numpy as np
 
 import torch.nn.functional as F
 import torchaudio.transforms as T
@@ -95,15 +96,15 @@ class WavPreprocessor():
     
     def plot_spec(self, spec):
         plt.figure(figsize=(10, 4))
-        if self.spec_type == "log-mel":
+        if isinstance(spec, torch.Tensor):
             librosa.display.specshow(
-                spec,
+                spec.numpy(),
                 sr=self.sr,
                 cmap="magma"
             )
-        if self.spec_type == "cqt":
+        elif isinstance(spec, np.ndarray):
             librosa.display.specshow(
-                spec.numpy(),
+                spec,
                 sr=self.sr,
                 cmap="magma"
             )

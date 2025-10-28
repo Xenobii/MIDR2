@@ -7,7 +7,7 @@ import math
 import torch.nn.functional as F
 
 
-class MidiProcessor():
+class MidiPreprocessor():
     def __init__(self, config):
         # midi
         self.num_pitch  = config['midi']['num_pitch']
@@ -57,12 +57,12 @@ class MidiProcessor():
             a_time_in_sec[i] = time_in_sec_prev + ((i-ticks_prev) / ticks_per_beat * tempo_curr / 1e06)
 
         # (3) obtain MIDI message
-        a_note = []
-        a_onset = []
+        a_note     = []
+        a_onset    = []
         a_velocity = []
-        a_reonset = []
-        a_push = []
-        a_sustain = []
+        a_reonset  = []
+        a_push     = []
+        a_sustain  = []
         for i in range(self.num_pitch):
             a_onset.append(-1)
             a_velocity.append(-1)
@@ -88,15 +88,15 @@ class MidiProcessor():
                             if verbose_flag is True:
                                 print('## output sustain pedal off : '+str(i))
                                 print({'onset': a_onset[i],
-                                    'offset': time_in_sec,
-                                    'pitch': i,
+                                    'offset'  : time_in_sec,
+                                    'pitch'   : i,
                                     'velocity': a_velocity[i],
-                                    'reonset': a_reonset[i]})
+                                    'reonset' : a_reonset[i]})
                             a_note.append({'onset': a_onset[i],
-                                        'offset': time_in_sec,
-                                        'pitch': i,
+                                        'offset'  : time_in_sec,
+                                        'pitch'   : i,
                                         'velocity': a_velocity[i],
-                                        'reonset': a_reonset[i]})
+                                        'reonset' : a_reonset[i]})
                             a_onset[i] = -1
                             a_velocity[i] = -1
                             a_reonset[i] = False
@@ -107,7 +107,7 @@ class MidiProcessor():
                     # sustain on
                     if verbose_flag is True:
                         print('** sustain pedal ON **')
-                    sustain_flag = True
+                    sustain_flag = False
                     for i in range(self.note_min, self.note_max+1):
                         if a_push[i] is True:
                             a_sustain[i] = True
@@ -123,16 +123,16 @@ class MidiProcessor():
                     if verbose_flag is True:
                         print('## output reonset : '+str(note))
                         print({'onset': a_onset[note],
-                            'offset': time_in_sec,
-                            'pitch': note,
+                            'offset'  : time_in_sec,
+                            'pitch'   : note,
                             'velocity': a_velocity[note],
-                            'reonset': a_reonset[note]})
+                            'reonset' : a_reonset[note]})
                     # reonset
                     a_note.append({'onset': a_onset[note],
-                                'offset': time_in_sec,
-                                'pitch': note,
+                                'offset'  : time_in_sec,
+                                'pitch'   : note,
                                 'velocity': a_velocity[note],
-                                'reonset': a_reonset[note]})
+                                'reonset' : a_reonset[note]})
                     a_reonset[note] = True
                 else:
                     a_reonset[note] = False
@@ -155,20 +155,20 @@ class MidiProcessor():
                     if verbose_flag is True:
                         print('## output offset : '+str(note))
                         print({'onset': a_onset[note],
-                            'offset': time_in_sec,
-                            'pitch': note,
+                            'offset'  : time_in_sec,
+                            'pitch'   : note,
                             'velocity': a_velocity[note],
-                            'reonset': a_reonset[note]})
+                            'reonset' : a_reonset[note]})
                         print({'onset': a_onset[note],
-                            'offset': time_in_sec,
-                            'pitch': note,
+                            'offset'  : time_in_sec,
+                            'pitch'   : note,
                             'velocity': a_velocity[note],
-                            'reonset': a_reonset[note]})
+                            'reonset' : a_reonset[note]})
                     a_note.append({'onset': a_onset[note],
-                                'offset': time_in_sec,
-                                'pitch': note,
+                                'offset'  : time_in_sec,
+                                'pitch'   : note,
                                 'velocity': a_velocity[note],
-                                'reonset': a_reonset[note]})
+                                'reonset' : a_reonset[note]})
                     a_onset[note] = -1
                     a_velocity[note] = -1
                     a_reonset[note] = False
@@ -179,15 +179,15 @@ class MidiProcessor():
                 if verbose_flag is True:
                     print('## output final : '+str(i))
                     print({'onset': a_onset[i],
-                        'offset': time_in_sec,
-                        'pitch': i,
+                        'offset'  : time_in_sec,
+                        'pitch'   : i,
                         'velocity': a_velocity[i],
-                        'reonset': a_reonset[i]})
+                        'reonset' : a_reonset[i]})
                 a_note.append({'onset': a_onset[i],
-                            'offset': time_in_sec,
-                            'pitch': i,
+                            'offset'  : time_in_sec,
+                            'pitch'   : i,
                             'velocity': a_velocity[i],
-                            'reonset': a_reonset[i]})
+                            'reonset' : a_reonset[i]})
         a_note_sort = sorted(sorted(a_note, key=lambda x: x['pitch']), key=lambda x: x['onset'])
 
         return a_note_sort
@@ -207,7 +207,7 @@ class MidiProcessor():
             if max_offset < note['offset']:
                 max_offset = note['offset']
         
-        nframe  = int(max_offset * nframe_in_sec + 0.5) + 1
+        nframe = int(max_offset * nframe_in_sec + 0.5) + 1
 
         # initialize labels
         a_mpe       = np.zeros((nframe, self.num_notes), dtype=np.bool)
@@ -285,105 +285,55 @@ class MidiProcessor():
                     offset_val = max(0.0, 1.0 - (abs(offset_ms_diff) / (offset_sharpness * hop_ms)))
                     if offset_frame-j >= 0:
                         a_offset[offset_frame-j][pitch] = max(a_offset[offset_frame-j][pitch],  offset_val)
-                        
+        
+
+        # Split to chunks
+        a_mpe      = self.midi2chunks(torch.from_numpy(a_mpe))
+        a_onset    = self.midi2chunks(torch.from_numpy(a_onset))
+        a_offset   = self.midi2chunks(torch.from_numpy(a_offset))
+        a_velocity = self.midi2chunks(torch.from_numpy(a_velocity))
+
         # (5-2) output label file
         # mpe        : 0 or 1
         # onset      : 0.0-1.0
         # offset     : 0.0-1.0
         # velocity   : 0 - 127
         a_label = {
-            'mpe'      : a_mpe.tolist(),
-            'onset'    : a_onset.tolist(),
-            'offset'   : a_offset.tolist(),
-            'velocity' : a_velocity.tolist()
+            'mpe'      : a_mpe,
+            'onset'    : a_onset,
+            'offset'   : a_offset,
+            'velocity' : a_velocity
         }
 
         return a_label
     
-    def midr2chunks(self, midi: torch.Tensor) -> torch.Tensor:
+    def midi2chunks(self, midr: torch.Tensor) -> torch.Tensor:
         pad_value = 0.0
         nframe    = self.nframe
 
         # Pad right to make multiple of nframe
-        num_frame_midr = midi.shape[1]
+        num_frame_midr = midr.shape[0]
         num_chunks     = math.ceil(num_frame_midr / nframe)
         num_frame_pad  = num_chunks * nframe - num_frame_midr
-        midi           = F.pad(midi, (0, num_frame_pad), mode='constant', value=pad_value)
+        midr           = F.pad(midr, (0, 0, 0, num_frame_pad), mode='constant', value=pad_value)
 
-          # Split directly into non overlapping chunks
-        chunks = midi.unfold(dimension=1, size=nframe, step=nframe)
-        chunks = chunks.permute(1, 0, 2).contiguous()                # (num_chunks, 88, nframe)
-        return chunks
-    
-    def note2ref(self, note_txt_path):
-        def note2freq(note_number):
-            return 440.0 * pow(2.0, (int(note_number) - 69) / 12)
-
-        # Load note file (skip header)
-        with open(note_txt_path, 'r', encoding='utf-8') as f:
-            a_input = f.readlines()
-
-        # Compute total duration
-        duration = 0.0
-        for i in range(1, len(a_input)):
-            offset = float(a_input[i].rstrip('\n').split('\t')[1])
-            if duration < offset:
-                duration = offset
-
-        # Frame counts for 16ms and 10ms
-        nframe_16ms = int(duration * 62.5 + 0.5) + 1
-        nframe_10ms = int(duration * 100 + 0.5) + 1
-
-        # Binary pitch activations
-        a_mpe_16 = np.zeros((nframe_16ms, self.num_pitch), dtype=np.int_)
-        a_mpe_10 = np.zeros((nframe_10ms, self.num_pitch), dtype=np.int_)
-
-        # Fill activation matrices
-        for n in range(1, len(a_input)):
-            cols = a_input[n].rstrip('\n').split('\t')
-            onset = float(cols[0])
-            offset = float(cols[1])
-            pitch = int(cols[3])
-
-            # 16 ms
-            onset_frame = int(onset * 62.5 + 0.5)
-            offset_frame = int(offset * 62.5 + 0.5)
-            for i in range(onset_frame, offset_frame + 1):
-                a_mpe_16[i][pitch] = 1
-
-            # 10 ms
-            onset_frame = int(onset * 100 + 0.5)
-            offset_frame = int(offset * 100 + 0.5)
-            for i in range(onset_frame, offset_frame + 1):
-                a_mpe_10[i][pitch] = 1
-
-        # Convert active MIDI pitches to frequencies per frame
-        a_ref_16 = []
-        a_ref_10 = []
-
-        for i in range(len(a_mpe_16)):
-            freqs = [note2freq(j) for j in range(self.num_pitch) if a_mpe_16[i][j] == 1]
-            a_ref_16.append(freqs)
-
-        for i in range(len(a_mpe_10)):
-            freqs = [note2freq(j) for j in range(self.num_pitch) if a_mpe_10[i][j] == 1]
-            a_ref_10.append(freqs)
-
-        return a_ref_10, a_ref_16
+        # Split directly into non overlapping chunks
+        chunks = midr.unfold(dimension=0, size=nframe, step=nframe) # (num_chunks, nframe, x)
+        return chunks.permute(0, 2, 1).contiguous().numpy()
     
     def __call__(self, x):
         x = self.midi2note(x)
         x = self.note2label(x)
         return x
     
-    def plot_spec(self, spec):
+    def plot_midi(self, spec):
         spec = np.array(spec)
         if spec.ndim != 2:
             raise ValueError(f"Expected a 2D array, got shape {spec.shape}")
 
         plt.figure(figsize=(10, 4))
         plt.imshow(
-            spec.T,            # transpose to put time on x-axis, notes on y-axis
+            spec.T,
             aspect="auto",
             origin="lower",
             cmap="magma",
@@ -401,6 +351,9 @@ if __name__=="__main__":
     with open('config.json', 'r', encoding='utf-8') as f:
         config = json.load(f)
 
-    preproc = MidiProcessor(config)
+    preproc = MidiPreprocessor(config)
 
     f_midi = "test_files/test_midi.MID"
+
+    notes = preproc(f_midi)
+    preproc.plot_midi(notes['offset'])

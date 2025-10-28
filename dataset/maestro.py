@@ -31,13 +31,20 @@ class MaestroDataset(Dataset):
         if self._h5 == None:
             self._h5 = h5py.File(self.h5_path, "r", swmr=True)
 
-        spec      = torch.from_numpy(self._h5[track_key]["spec"][chunk_idx])
-        spiral_cd = torch.from_numpy(self._h5[track_key]["spiral_cd"][chunk_idx])
-        spiral_cc = torch.from_numpy(self._h5[track_key]["spiral_cc"][chunk_idx])
-        note_mask = torch.from_numpy(self._h5[track_key]["note_mask"][chunk_idx])
+        spec = torch.from_numpy(self._h5[track_key]["spec"][chunk_idx])
+
+        mpe      = torch.from_numpy(self._h5[track_key]["mpe"][chunk_idx]).float()
+        onset    = torch.from_numpy(self._h5[track_key]["onset"][chunk_idx])
+        offset   = torch.from_numpy(self._h5[track_key]["offset"][chunk_idx])
+        velocity = torch.from_numpy(self._h5[track_key]["velocity"][chunk_idx]).long()
+
+        cd = torch.from_numpy(self._h5[track_key]["spiral_cd"][chunk_idx])
+        cc = torch.from_numpy(self._h5[track_key]["spiral_cc"][chunk_idx])
+
+        note_mask = torch.from_numpy(self._h5[track_key]["note_mask"][chunk_idx]).float()
         
         if self.transform is not None:
             spec = self.transform(spec)
 
         # Return only spiral for now
-        return spec, spiral_cd, spiral_cc, note_mask
+        return spec, mpe, onset, offset, velocity, cd, cc, note_mask

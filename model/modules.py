@@ -1,7 +1,7 @@
 import math
 import torch 
 import torch.nn as nn
-import torch.nn.functional as f
+import torch.nn.functional as F
 
 import warnings
 warnings.filterwarnings(
@@ -14,12 +14,12 @@ warnings.filterwarnings(
 # CONVOLUTIONAL BLOCKS
 
 class ConvEncoderBasic(nn.Module):
-    def __init__(self, ch_in, ch_out):
+    def __init__(self, ch_in=1, ch_out=1):
         super().__init__()
 
         self.conv1 = nn.Sequential(
             nn.Conv1d(
-                in_channels=1,
+                in_channels=ch_in,
                 out_channels=20,
                 kernel_size=15,
                 padding=15//2,
@@ -50,7 +50,7 @@ class ConvEncoderBasic(nn.Module):
             nn.Dropout(p=0.2),
             nn.Conv1d(
                 in_channels=10,
-                out_channels=1,
+                out_channels=ch_out,
                 kernel_size=1,
                 padding=0,
                 stride=1
@@ -58,17 +58,19 @@ class ConvEncoderBasic(nn.Module):
         )
 
     def forward(self, x):
-        # [B, ch_in, nbin]
+        # [B, ch_in, 295]
         x = self.conv1(x)
-        # [B, 20, nbin]
+        # [B, hid_dim, 264]
         x = self.conv2(x)
-        # [B, ch_out, nbin]
+        # [B, 2*hid_dims]
         return x
 
 
 class ConvEncoderHarmonic(nn.Module):
     def __init__(self, harmonics):
         super().__init__()
+
+        hid_dims = 16
         self.conv1 = nn.Sequential(
             nn.Conv1d(
                 in_channels=1,
@@ -85,15 +87,15 @@ class ConvEncoderHarmonic(nn.Module):
         self.conv2 = nn.Sequential(
             nn.Conv1d(
                 in_channels=harmonics,
-                out_channels=32,
+                out_channels=hid_dims,
                 kernel_size=3,
                 padding=1,
                 stride=1
             ),
             nn.LeakyReLU(inplace=True),
             nn.Conv1d(
-                in_channels=32,
-                out_channels=64,
+                in_channels=hid_dims,
+                out_channels=2*hid_dims,
                 kernel_size=36,
                 padding='same',
                 stride=1
@@ -103,8 +105,8 @@ class ConvEncoderHarmonic(nn.Module):
 
         self.conv3 = nn.Sequential(
             nn.Conv1d(
-                in_channels=64,
-                out_channels=64,
+                in_channels=2*hid_dims,
+                out_channels=2*hid_dims,
                 kernel_size=12,
                 padding=5,
                 stride=3
@@ -114,15 +116,15 @@ class ConvEncoderHarmonic(nn.Module):
 
         self.conv4 = nn.Sequential(
             nn.Conv1d(
-                in_channels=64,
-                out_channels=64,
+                in_channels=2*hid_dims,
+                out_channels=hid_dims,
                 kernel_size=3,
                 padding=3//2,
                 stride=1
             ),
             nn.LeakyReLU(inplace=True),
             nn.Conv1d(
-                in_channels=64,
+                in_channels=hid_dims,
                 out_channels=1,
                 kernel_size=36,
                 padding='same',
@@ -131,19 +133,112 @@ class ConvEncoderHarmonic(nn.Module):
             nn.LeakyReLU(inplace=True)
         )
 
+        self.rescon1 = nn.Conv1d(
+            in_channels=harmonics,
+            out_channels=2*hid_dims,
+            kernel_size=1,
+            stride=1
+        )
+        self.rescon2 = nn.Conv1d(
+            in_channels=2*hid_dims,
+            out_channels=1,
+            kernel_size=1,
+            stride=1
+        )
+
     def forward(self, x: torch.Tensor):
         # [B, 295]
         x = self.conv1(x).squeeze(1)
         # [B, 264]
         x = self.harmonicstacking(x)
         # [B, 8, 264]
-        x = self.conv2(x)
-        # [B, 64, 264]
+        x = self.conv2(x) + self.rescon1(x)
+        # [B, 2*hid_dims, 264]
         x = self.conv3(x)
-        # [B, 64, 88]
-        x = self.conv4(x).squeeze(1)
+        # [B, 2*hid_dims, 88]
+        x = (self.conv4(x) + self.rescon2(x)).squeeze(1)
         # [B, 88]
         return x
+
+
+class ConvEncoderRes(nn.Module):
+    def __init__(self, harmonics, ch_out):
+        super().__init__()
+
+        hid_dims = 16
+        self.conv2 = nn.Sequential(
+            nn.Conv1d(
+                in_channels=harmonics,
+                out_channels=hid_dims,
+                kernel_size=3,
+                padding=1,
+                stride=1
+            ),
+            nn.LeakyReLU(inplace=True),
+            nn.Conv1d(
+                in_channels=hid_dims,
+                out_channels=2*hid_dims,
+                kernel_size=36,
+                padding='same',
+                stride=1
+            ),
+            nn.LeakyReLU(inplace=True)
+        )
+
+        self.conv3 = nn.Sequential(
+            nn.Conv1d(
+                in_channels=2*hid_dims,
+                out_channels=2*hid_dims,
+                kernel_size=12,
+                padding=5,
+                stride=3
+            ),
+            nn.LeakyReLU(inplace=True)
+        )
+
+        self.conv4 = nn.Sequential(
+            nn.Conv1d(
+                in_channels=2*hid_dims,
+                out_channels=hid_dims,
+                kernel_size=3,
+                padding=3//2,
+                stride=1
+            ),
+            nn.LeakyReLU(inplace=True),
+            nn.Conv1d(
+                in_channels=hid_dims,
+                out_channels=ch_out,
+                kernel_size=36,
+                padding='same',
+                stride=1
+            ),
+            nn.LeakyReLU(inplace=True)
+        )
+
+        self.rescon1 = nn.Conv1d(
+            in_channels=harmonics,
+            out_channels=2*hid_dims,
+            kernel_size=1,
+            stride=1
+        )
+        self.rescon2 = nn.Conv1d(
+            in_channels=2*hid_dims,
+            out_channels=ch_out,
+            kernel_size=1,
+            stride=1
+        )
+
+    def forward(self, x: torch.Tensor):
+        # [B, 8, 264]
+        x = self.conv2(x) + self.rescon1(x)
+        # [B, 2*hid_dims, 264]
+        x = self.conv3(x)
+        # [B, 2*hid_dims, 88]
+        x = (self.conv4(x) + self.rescon2(x)).squeeze(1)
+        # [B, 88]
+        return x
+    
+
 
 
 # MLP BLOCKS
@@ -178,7 +273,6 @@ class MLPHeadL(nn.Module):
         return self.activatation(self.fc(x))
         
 
-
 class MLPHeadS(nn.Module):
     def __init__(self, dim_in, dim_out, activation='relu'):
         super().__init__()
@@ -194,15 +288,80 @@ class MLPHeadS(nn.Module):
             self.activation = nn.Softplus()
 
         self.fc = nn.Sequential(
-            nn.Linear(dim_in, 88),
-            nn.LeakyReLU(inplace=True),
-            nn.Linear(88, 12),
-            nn.LeakyReLU(inplace=True),
-            nn.Linear(12, dim_out),
+            nn.Linear(dim_in, dim_out)
         )
 
     def forward(self, x):
         return self.activation(self.fc(x))
+
+
+
+class Attn(nn.Module):
+    def __init__(self, embed_size, num_heads):
+        super(Attn, self).__init__()
+
+        self.num_heads = num_heads
+        self.head_dim  = embed_size // num_heads
+
+        self.query = nn.Linear(embed_size, embed_size)
+        self.key   = nn.Linear(embed_size, embed_size)
+        self.value = nn.Linear(embed_size, embed_size)
+
+        self.fc_out = nn.Linear(embed_size, embed_size)
+
+    def scaled_dot_product_attention(self, Q:torch.Tensor, K:torch.Tensor, V:torch.Tensor, mask=None) -> torch.Tensor:
+        d_k = Q.size(-1)
+        scores = torch.matmul(Q, K.transpose(-2, -1)) / (d_k ** 0.5)
+
+        if mask is not None:
+            scores = scores.masked_fill(mask==0, float('-inf'))
+
+        attention_weights = F.softmax(scores, dim=-1)
+        attention_weights = attention_weights.masked_fill(torch.isnan(attention_weights), 0.0)
+
+        output = torch.matmul(attention_weights, V)
+        return output, attention_weights
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # [B, ]
+        B, seq_len, embed_size = x.shape
+        Q = self.query(x)
+        K = self.key(x)
+        V = self.value(x)
+
+        Q = Q.view(B, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
+        K = K.view(B, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
+        V = V.view(B, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
+
+        out, _ = self.scaled_dot_product_attention(Q, K, V)
+        out = out.transpose(1, 2).contiguous().view(B, seq_len, embed_size)
+
+        return self.fc_out(out)
+
+
+class StandardEncoder(nn.Module):
+    def __init__(self, embed_size, num_heads, ff_hid=4, dropout=0.1):
+        super().__init__()
+        self.attn = Attn(embed_size=embed_size, num_heads=num_heads)
+        self.norm1 = nn.LayerNorm(embed_size)
+        self.norm2 = nn.LayerNorm(embed_size)
+        self.dropout = nn.Dropout(dropout)
+
+        self.ff = nn.Sequential(
+            nn.Linear(embed_size, ff_hid * embed_size),
+            nn.ReLU(),
+            nn.Linear(ff_hid * embed_size, embed_size)
+        )
+
+    def forward(self, x: torch.Tensor):
+        att_out = self.attn(x)
+        x = self.norm1(x + self.dropout(att_out))
+
+        ff_out = self.ff(x)
+        x = self.norm2(x + self.dropout(ff_out))
+
+        return x
+
 
 
 # TRANSFORMS
@@ -265,7 +424,6 @@ class SpiralEmbeddings(nn.Module):
     def forward(self):
         return self.pe
     
-
 
 class HarmonicStacking(nn.Module):
     def __init__(self, harmonics: int = 8):

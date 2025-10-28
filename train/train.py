@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 from torch.nn.utils import clip_grad_norm_
 from torch.amp import autocast, GradScaler
 
-from model.model import Model, SNAModel, Model2
+from model.model import BasicMIDRModel
 from dataset.maestro import MaestroDataset
 
 
@@ -37,7 +37,7 @@ class Trainer():
         print(f"Training on {self.device}")
 
         # Model settings
-        self.model = Model2(config)
+        self.model = BasicMIDRModel(config)
         self.model = self.model.to(self.device)
         print(f"Trainable model parameters: {sum(p.numel() for p in self.model.parameters() if p.requires_grad)}")
         # def count_parameters(model):
@@ -126,10 +126,10 @@ class Trainer():
 
         pbar = tqdm(self.dataloader_train, desc="Training", leave=False)
 
-        for spec, label_spiral_cd, label_spiral_cc, note_mask in pbar:
-            spec            = spec.to(self.device, non_blocking=True)
-            label_spiral_cd = label_spiral_cd.to(self.device, non_blocking=True)
-            label_spiral_cc = label_spiral_cc.to(self.device, non_blocking=True)
+        for spec, _, _, _, _, label_cd, label_cc, note_mask in pbar:
+            spec     = spec.to(self.device, non_blocking=True)
+            label_cd = label_cd.to(self.device, non_blocking=True)
+            label_cc = label_cc.to(self.device, non_blocking=True)
             
             note_mask = note_mask.to(dtype=torch.float32, device=self.device, non_blocking=True)
         
@@ -138,36 +138,36 @@ class Trainer():
             # AMP
             with autocast(device_type=self.device, dtype=torch.float16):
                 # Forward
-                output_spiral_cd, output_spiral_cc = self.model(spec)
+                output_cd, output_cc = self.model(spec)
                 
                 # Calculate loss
-                loss_spiral_cd = self.criterion_spiral_cd(label_spiral_cd, output_spiral_cd)
-                loss_spiral_cc = self.criterion_spiral_cc(label_spiral_cc, output_spiral_cc)
+                loss_cd = self.criterion_spiral_cd(label_cd, output_cd)
+                loss_cc = self.criterion_spiral_cc(label_cc, output_cc)
                 
                 # Apply mask
-                mask_cd = note_mask.expand_as(loss_spiral_cd)
-                mask_cc = note_mask.expand_as(loss_spiral_cc)
-                loss_spiral_cd = (loss_spiral_cd * mask_cd).sum() / (mask_cd.sum() + eps)
-                loss_spiral_cc = (loss_spiral_cc * mask_cc).sum() / (mask_cc.sum() + eps)
+                mask_cd = note_mask.expand_as(loss_cd)
+                mask_cc = note_mask.expand_as(loss_cc)
+                loss_cd = (loss_cd * mask_cd).sum() / (mask_cd.sum() + eps)
+                loss_cc = (loss_cc * mask_cc).sum() / (mask_cc.sum() + eps)
                 
-                loss = loss_spiral_cd + loss_spiral_cc
+                loss = loss_cd + loss_cc
 
             # Scale & Backward
             self.scaler.scale(loss).backward()
             self.scaler.unscale_(self.optimizer)
-            # clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+            clip_grad_norm_(self.model.parameters(), max_norm=1.0)
             self.scaler.step(self.optimizer)
             self.scaler.update()
 
             # Epoch loss
             epoch_loss    += loss.item()
-            epoch_loss_cd += loss_spiral_cd.item()
-            epoch_loss_cc += loss_spiral_cc.item()
+            epoch_loss_cd += loss_cd.item()
+            epoch_loss_cc += loss_cc.item()
 
             pbar.set_postfix(loss=f"{loss.item():.4f}")
 
         pbar.close()
-        epoch_loss = epoch_loss / len(self.dataloader_train)
+        epoch_loss    = epoch_loss / len(self.dataloader_train)
         epoch_loss_cd = epoch_loss_cd / len(self.dataloader_train)
         epoch_loss_cc = epoch_loss_cc / len(self.dataloader_train)
         return epoch_loss, epoch_loss_cd, epoch_loss_cc
@@ -181,33 +181,33 @@ class Trainer():
         eps = 1e-8
         
         with torch.no_grad(), autocast(device_type=self.device, dtype=torch.float16):
-            for i, (spec, label_spiral_cd, label_spiral_cc, note_mask) in enumerate(self.dataloader_valid):
-                spec            = spec.to(self.device, non_blocking=True)
-                label_spiral_cd = label_spiral_cd.to(self.device, non_blocking=True)
-                label_spiral_cc = label_spiral_cc.to(self.device, non_blocking=True)
+            for i, (spec, _, _, _, _, label_cd, label_cc, note_mask) in enumerate(self.dataloader_valid):
+                spec     = spec.to(self.device, non_blocking=True)
+                label_cd = label_cd.to(self.device, non_blocking=True)
+                label_cc = label_cc.to(self.device, non_blocking=True)
                 
                 note_mask = note_mask.to(dtype=torch.float32, device=self.device, non_blocking=True)
 
                 # Forward
-                output_spiral_cd, output_spiral_cc = self.model(spec)
+                output_cd, output_cc = self.model(spec)
                 
-                # Calculate Loss
-                loss_spiral_cd = self.criterion_spiral_cd(label_spiral_cd, output_spiral_cd)
-                loss_spiral_cc = self.criterion_spiral_cc(label_spiral_cc, output_spiral_cc)
-
+                # Calculate loss
+                loss_cd = self.criterion_spiral_cd(label_cd, output_cd)
+                loss_cc = self.criterion_spiral_cc(label_cc, output_cc)
+                
                 # Mask
-                mask_cd = note_mask.expand_as(loss_spiral_cd)
-                mask_cc = note_mask.expand_as(loss_spiral_cc)
-                loss_spiral_cd = (loss_spiral_cd * mask_cd).sum() / (mask_cd.sum() + eps)
-                loss_spiral_cc = (loss_spiral_cc * mask_cc).sum() / (mask_cc.sum() + eps)
+                mask_cd = note_mask.expand_as(loss_cd)
+                mask_cc = note_mask.expand_as(loss_cc)
+                loss_cd = (loss_cd * mask_cd).sum() / (mask_cd.sum() + eps)
+                loss_cc = (loss_cc * mask_cc).sum() / (mask_cc.sum() + eps)
                 
-                loss = loss_spiral_cd + loss_spiral_cc
+                loss = loss_cd + loss_cc
 
                 epoch_loss    += loss.item()
-                epoch_loss_cd += loss_spiral_cd
-                epoch_loss_cc += loss_spiral_cc
+                epoch_loss_cd += loss_cd
+                epoch_loss_cc += loss_cc
 
-        epoch_loss = epoch_loss / len(self.dataloader_valid)
+        epoch_loss    = epoch_loss / len(self.dataloader_valid)
         epoch_loss_cd = epoch_loss_cd / len(self.dataloader_valid)
         epoch_loss_cc = epoch_loss_cc / len(self.dataloader_valid)
         return epoch_loss, epoch_loss_cd, epoch_loss_cc

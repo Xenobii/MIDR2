@@ -3,8 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from model.modules import SpiralTransform, HarmonicStacking, SpiralEmbeddings
-from model.modules import MLPHeadL, MLPHeadS
-from model.modules import ConvEncoderBasic, ConvEncoderHarmonic
+from model.modules import MLPHeadL, MLPHeadS, StandardEncoder
+from model.modules import ConvEncoderBasic, ConvEncoderHarmonic, ConvEncoderRes
 
 import matplotlib.pyplot as plt
 import librosa
@@ -138,6 +138,7 @@ class SNAModel(nn.Module):
             dim_out=1, 
             activation='softplus')
     
+
     def forward(self, x: torch.Tensor):
         batch_size = x.shape[0]
 
@@ -160,7 +161,7 @@ class SNAModel(nn.Module):
     
     
 
-class Model2(nn.Module):
+class BasicMIDRModel(nn.Module):
     def __init__(self, config):
         super().__init__()
         # input/output settings
@@ -180,32 +181,99 @@ class Model2(nn.Module):
         self.convenc   = ConvEncoderHarmonic(harmonics)
         self.mlp       = MLPHeadS(88, 12, 'leaky_relu')
         self.diam_mlp  = MLPHeadS(12, 1, 'softplus')
-
-    
+        
     def forward(self, x: torch.Tensor):
         batch_size = x.shape[0]
-        # plot_tensor(x.squeeze(0))
         # [B. nframe, nbin]
         x = self.layernorm(x)
         # [B, nframe, nbin]
         x = x.reshape(batch_size*self.nframe, self.nbin).unsqueeze(1)
-        # [B*nframe, nbin]
+        # [B*nframe, 1, nbin]
         x = self.convenc(x).squeeze(1)
         # [B*nframe, 88]
-        # plot_tensor(x)
         x = self.mlp(x)
         # [B*nframe, 12]
-        # plot_tensor(x)
-        spiral_cc = x @ self.pe
+        spiral_cd = x.sum(dim=1)
         # [B*nframe, 1]
-        spiral_cd = self.diam_mlp(x)
+        spiral_cc = x @ self.pe
         # [B*nframe, 3]
         spiral_cd = spiral_cd.reshape(batch_size, self.nframe, 1)
         # [B, nframe, 1]
         spiral_cc = spiral_cc.reshape(batch_size, self.nframe, 3)
         # [B, nframe, 3]
         return spiral_cd, spiral_cc
-    
+
+
+class AMT_1(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        # input/output settings
+        self.nframe      = config['input']['nframe']
+        self.nbin        = 295
+        self.len_padding = config['input']['len_padding']
+        self.npitch      = config['midi']['num_notes']
+
+        r = config['midr']['spiral']['radius']
+        h = config['midr']['spiral']['height']
+        
+        self.harmonics = 8
+        self.cnn_dim   = 16
+
+        self.layernorm = nn.LayerNorm(normalized_shape=self.nbin)
+        
+        self.harmonicstacking = HarmonicStacking(self.harmonics)
+        
+        self.conv1 = nn.Sequential(
+            nn.Conv1d(
+                in_channels=1,
+                out_channels=1,
+                kernel_size=36,
+                padding=2,
+                stride=1
+            ),
+            nn.LeakyReLU(inplace=True),
+        )
+        
+        self.convencoder = ConvEncoderRes(self.harmonics, self.cnn_dim)
+        
+        self.transformerencoder = StandardEncoder(embed_size=self.cnn_dim, num_heads=4)
+        
+        self.mlp_mpe      = nn.Linear(self.cnn_dim, 1)
+        self.mlp_onset    = nn.Linear(self.cnn_dim, 1)
+        self.mlp_offset   = nn.Linear(self.cnn_dim, 1)
+        self.mlp_velocity = nn.Linear(self.cnn_dim, 128)
+        self.sigmoid      = nn.Sigmoid()
+
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        B = x.shape[0]
+        # [B, nframe, nbin]
+        x = self.layernorm(x)
+        # [B, nframe, nbin]
+        x = x.reshape(B*self.nframe, self.nbin).unsqueeze(1)  
+        # [B*nframe, nbin]
+        x = self.conv1(x).squeeze(1)
+        # [B*nframe, 88]
+        x = self.harmonicstacking(x)
+        # [B*nframe, harmonics, nbin]
+        x = self.convencoder(x)
+        # [B*nframe, cnn_dim, 88]
+        x = x.reshape(B, self.nframe, self.cnn_dim, 88).reshape(B*88, self.nframe, self.cnn_dim)
+        # [B*88, nframe, cnn_dim]
+        x = self.transformerencoder(x)
+        # [B*88, nframe, cnn_dim]
+        x = x.reshape(B, self.nframe, 88, self.cnn_dim)
+        # [B, nframe, 88, cnn_dim]
+        mpe      = self.sigmoid(self.mlp_mpe(x).squeeze(3))
+        onset    = self.sigmoid(self.mlp_onset(x).squeeze(3))
+        offset   = self.sigmoid(self.mlp_offset(x).squeeze(3))
+        velocity = self.mlp_velocity(x)
+        # [B, nframe, 88]
+        # [B, nframe, 88]
+        # [B, nframe, 88]
+        # [B, nframe, 88, 128]
+        return mpe, onset, offset, velocity
+
 
 
 def plot_tensor(x):
