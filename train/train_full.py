@@ -297,7 +297,7 @@ class Trainer():
         
         pbar.close()
 
-        n_batches            = len(self.dataloader_train)
+        n_batches            = len(self.dataloader_valid)
         epoch_loss          /= n_batches
         epoch_loss_mpe      /= n_batches
         epoch_loss_onset    /= n_batches

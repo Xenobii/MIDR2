@@ -42,8 +42,8 @@
     },
     "training": {
         "lr"         : 0.001,
-        "batch_size" : 32,
-        "num_workers": 4,
-        "epochs"     : 16
+        "batch_size" : 64,
+        "num_workers": 8,
+        "epochs"     : 6
     }
 }

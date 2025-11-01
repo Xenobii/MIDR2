@@ -217,7 +217,7 @@ class AMT_1(nn.Module):
         h = config['midr']['spiral']['height']
         
         self.harmonics = 8
-        self.cnn_dim   = 16
+        self.cnn_dim   = 128
 
         self.layernorm = nn.LayerNorm(normalized_shape=self.nbin)
         

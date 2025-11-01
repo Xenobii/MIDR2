@@ -2,9 +2,10 @@ import torch
 import json
 from argparse import ArgumentParser
 
-from model.model import Model2
+from model.model import AMT_1
 from preprocessors.prep_wav import WavPreprocessor
 from preprocessors.prep_midr import MidrPreprocessor
+from preprocessors.prep_midi import MidiPreprocessor
 
 
 def run_inference(config, path):
@@ -13,7 +14,7 @@ def run_inference(config, path):
     checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=True)
     
     # Load model
-    model = Model2(config)
+    model = AMT_1(config)
     model.load_state_dict(checkpoint['model_dict'])
     
     # Set to eval mode
@@ -30,22 +31,21 @@ def run_inference(config, path):
     # Preprocess
     prep_wav = WavPreprocessor(config)
     input = prep_wav(f_wav)
-    demo_input = torch.from_numpy(input[5]).to(device).unsqueeze(0)
+    demo_input = torch.from_numpy(input[0]).to(device).unsqueeze(0)
 
     # Ablation
     prep_midr = MidrPreprocessor(config)
-    midr = prep_midr(f_mid)
-    # print(midr['spiral_cc'])
-    # breakpoint()
-    prep_midr.plot_chroma(midr['spiral_cc'][6].T)
 
-    # print(demo_input.shape)
-    # breakpoint()
+    prep_midi = MidiPreprocessor(config)
 
-    with torch.no_grad(), torch.amp.autocast(device_type=device, dtype=torch.float16):
-        output_spiral_cd, output_spiral_cc = model(demo_input)
-        print(output_spiral_cc.shape)
-    prep_midr.plot_chroma(output_spiral_cc.squeeze(0).T.cpu())
+    with torch.no_grad():
+        # output_spiral_cd, output_spiral_cc = model(demo_input)
+        output_mpe, output_onset, output_offset, output_velocity = model(demo_input)
+        print(output_mpe.shape)
+    prep_midi.plot_midi(output_mpe.squeeze(0).cpu())
+    prep_midi.plot_midi(output_onset.squeeze(0).cpu())
+    prep_midi.plot_midi(output_offset.squeeze(0).cpu())
+    # prep_midi.plot_midi(output_velocity.squeeze(0).T.cpu())
 
     return
 
