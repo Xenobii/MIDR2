@@ -239,6 +239,83 @@ class ConvEncoderRes(nn.Module):
         return x
     
 
+class ConvEncoderRes2(nn.Module):
+    def __init__(self, harmonics, ch_out):
+        super().__init__()
+
+        hid_dims = 32
+        self.conv2 = nn.Sequential(
+            nn.Conv1d(
+                in_channels=harmonics,
+                out_channels=hid_dims,
+                kernel_size=3,
+                padding=1,
+                stride=1
+            ),
+            nn.LeakyReLU(inplace=True),
+            nn.Conv1d(
+                in_channels=hid_dims,
+                out_channels=2*hid_dims,
+                kernel_size=5,
+                padding='same',
+                stride=1
+            ),
+            nn.LeakyReLU(inplace=True)
+        )
+
+        self.conv3 = nn.Sequential(
+            nn.Conv1d(
+                in_channels=2*hid_dims,
+                out_channels=2*hid_dims,
+                kernel_size=32,
+                stride=3
+            ),
+            nn.LeakyReLU(inplace=True)
+        )
+
+        self.conv4 = nn.Sequential(
+            nn.Conv1d(
+                in_channels=2*hid_dims,
+                out_channels=hid_dims,
+                kernel_size=3,
+                padding=3//2,
+                stride=1
+            ),
+            nn.LeakyReLU(inplace=True),
+            nn.Conv1d(
+                in_channels=hid_dims,
+                out_channels=ch_out,
+                kernel_size=5,
+                padding='same',
+                stride=1
+            ),
+            nn.LeakyReLU(inplace=True)
+        )
+
+        self.rescon1 = nn.Conv1d(
+            in_channels=harmonics,
+            out_channels=2*hid_dims,
+            kernel_size=1,
+            stride=1
+        )
+        self.rescon2 = nn.Conv1d(
+            in_channels=2*hid_dims,
+            out_channels=ch_out,
+            kernel_size=1,
+            stride=1
+        )
+
+    def forward(self, x: torch.Tensor):
+        # [B, 8, 264]
+        x = self.conv2(x) + self.rescon1(x)
+        # [B, 2*hid_dims, 264]
+        x = self.conv3(x)
+        # [B, 2*hid_dims, 88]
+        x = (self.conv4(x) + self.rescon2(x)).squeeze(1)
+        # [B, 88]
+        return x
+    
+
 
 
 # MLP BLOCKS
@@ -365,6 +442,23 @@ class StandardEncoder(nn.Module):
 
 
 # TRANSFORMS
+
+
+class FramePadding(nn.Module):
+    def __init__(self, pad_length, pad_value):
+        super().__init__()
+
+        self.pad_length = pad_length
+        self.log_offset = pad_value
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # [B, nframe, nbin]
+        x = F.pad(x, (0, 0, self.pad_length, self.pad_length), value=self.log_offset)
+        # [B, nframe+2M, nbin]
+        x = x.unfold(dimension=1, size=2*self.pad_length+1, step=1)
+        # [B, nframe, nbin, 2M+1]
+        return x
+
 
 class SpiralTransform(nn.Module):
     """

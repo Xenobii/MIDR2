@@ -5,7 +5,7 @@ import json
 from argparse import ArgumentParser
 
 from preprocessors.prep_wav import WavPreprocessor
-from model.model import AMT_1
+from model.model import AMT_1, AMT_Padded
 
 
 
@@ -18,11 +18,11 @@ class AMT():
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
         # Load checkpoint
-        checkpoint_path = f"model/{model_path}/checkpoint_1.pth"
+        checkpoint_path = f"model/{model_path}/checkpoint_11.pth"
         checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=True)
         
         # Load model
-        self.model = AMT_1(config)
+        self.model = AMT_Padded(config)
         self.model.load_state_dict(checkpoint['model_dict'])
         self.model.eval()
 
@@ -43,7 +43,9 @@ class AMT():
         a_onset    = a_onset.reshape(chunks*nframe, nbin).to('cpu').detach().numpy()
         a_offset   = a_offset.reshape(chunks*nframe, nbin).to('cpu').detach().numpy()
         a_velocity = a_velocity.reshape(chunks*nframe, nbin, 128).argmax(1).to('cpu').detach().numpy()
-
+        prep = WavPreprocessor(self.config)
+        prep.plot_spec(a_mpe.T)
+        breakpoint()
         return a_mpe, a_onset, a_offset, a_velocity
     
 
@@ -226,7 +228,7 @@ class AMT():
 
         return
         
-    def __call__(self, f_path, f_midi='test_files/test_ouput.mid'):
+    def __call__(self, f_path, f_midi='test_files/test_output.mid'):
         # Prep wav
         feat = self.wav2feat(f_path)
         # Run inference

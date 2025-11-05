@@ -2,9 +2,7 @@ import torch
 import torch.nn as nn 
 import torch.nn.functional as F
 
-from model.modules import SpiralTransform, HarmonicStacking, SpiralEmbeddings
-from model.modules import MLPHeadL, MLPHeadS, StandardEncoder
-from model.modules import ConvEncoderBasic, ConvEncoderHarmonic, ConvEncoderRes
+from model.modules import *
 
 import matplotlib.pyplot as plt
 import librosa
@@ -238,10 +236,22 @@ class AMT_1(nn.Module):
         
         self.transformerencoder = StandardEncoder(embed_size=self.cnn_dim, num_heads=4)
         
-        self.mlp_mpe      = nn.Linear(self.cnn_dim, 1)
-        self.mlp_onset    = nn.Linear(self.cnn_dim, 1)
-        self.mlp_offset   = nn.Linear(self.cnn_dim, 1)
-        self.mlp_velocity = nn.Linear(self.cnn_dim, 128)
+        self.mlp_mpe      = nn.Sequential(
+            nn.Linear(self.cnn_dim, 128),
+            nn.Linear(128, 1)
+        )
+        self.mlp_velocity = nn.Sequential(
+            nn.Linear(self.cnn_dim, 128), 
+            nn.Linear(128, 128)
+        )
+        self.mlp_onset    = nn.Sequential(
+            nn.Linear(self.cnn_dim, 128),
+            nn.Linear(128, 1)
+        )
+        self.mlp_offset   = nn.Sequential(
+            nn.Linear(self.cnn_dim, 128),
+            nn.Linear(128, 1)
+        )
         self.sigmoid      = nn.Sigmoid()
 
 
@@ -256,6 +266,92 @@ class AMT_1(nn.Module):
         # [B*nframe, 88]
         x = self.harmonicstacking(x)
         # [B*nframe, harmonics, nbin]
+        x = self.convencoder(x)
+        # [B*nframe, cnn_dim, 88]
+        x = x.reshape(B, self.nframe, self.cnn_dim, 88).reshape(B*88, self.nframe, self.cnn_dim)
+        # [B*88, nframe, cnn_dim]
+        x = self.transformerencoder(x)
+        # [B*88, nframe, cnn_dim]
+        x = x.reshape(B, self.nframe, 88, self.cnn_dim)
+        # [B, nframe, 88, cnn_dim]
+        mpe      = self.sigmoid(self.mlp_mpe(x).squeeze(3))
+        onset    = self.sigmoid(self.mlp_onset(x).squeeze(3))
+        offset   = self.sigmoid(self.mlp_offset(x).squeeze(3))
+        velocity = self.mlp_velocity(x)
+        # [B, nframe, 88]
+        # [B, nframe, 88]
+        # [B, nframe, 88]
+        # [B, nframe, 88, 128]
+        return mpe, onset, offset, velocity
+    
+
+class AMT_Padded(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        # input/output settings
+        self.nframe       = config['input']['nframe']
+        self.nbin         = 295
+        self.frame_kernel = 7
+        self.len_padding  = config['input']['len_padding']
+        self.npitch       = config['midi']['num_notes']
+        
+        pad_length = config['input']['len_padding']
+        pad_value  = config['spec']['log_offset']
+
+        r = config['midr']['spiral']['radius']
+        h = config['midr']['spiral']['height']
+        
+        self.harmonics     = 8
+        self.frame_dim     = 4
+        self.post_conv_pad = 2*self.len_padding + 1 - (self.frame_kernel - 1)
+        self.cnn_dim       = 128
+
+        self.framepad = FramePadding(pad_length, pad_value)
+        
+        self.frameconv = nn.Sequential(
+            nn.Conv2d(
+                in_channels=1,
+                out_channels=4,
+                kernel_size=(1, self.frame_kernel)
+            ),
+        )
+        
+        self.convencoder = ConvEncoderRes2(self.frame_dim*self.post_conv_pad, self.cnn_dim)
+        
+        self.transformerencoder = StandardEncoder(embed_size=self.cnn_dim, num_heads=4)
+        
+        self.mlp_mpe      = nn.Sequential(
+            nn.Linear(self.cnn_dim, 128),
+            nn.Linear(128, 1),
+        )
+        self.mlp_velocity = nn.Sequential(
+            nn.Linear(self.cnn_dim, 128),
+            nn.Linear(128, 128), 
+        )
+        self.mlp_onset    = nn.Sequential(
+            nn.Linear(self.cnn_dim, 128),
+            nn.Linear(128, 1),
+        )
+        self.mlp_offset   = nn.Sequential(
+            nn.Linear(self.cnn_dim, 128),
+            nn.Linear(128, 1),
+        )
+        self.sigmoid      = nn.Sigmoid()
+
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        B = x.shape[0]
+        # [B, nframe, nbin]
+        x = self.framepad(x)
+        # [B, nframe, nbin, 2M+1]
+        x = x.reshape(B*self.nframe, self.nbin, 2*self.len_padding+1)
+        # [B*nframe, nbin, 2M+1]
+        x = self.frameconv(x.unsqueeze(1)).permute(0, 2, 1, 3)
+        # [B*nframe, nbin, frame_dim, 2M+1-(K-1)]
+        x = x.reshape(B*self.nframe, self.nbin, self.frame_dim*self.post_conv_pad)
+        # [B*nframe, nbin, frame_dim*(2M+1-(K-1))]
+        x = x.permute(0, 2, 1)
+        # [B*nframe, frame_dim*(2M+1-(K-1)), nbin]
         x = self.convencoder(x)
         # [B*nframe, cnn_dim, 88]
         x = x.reshape(B, self.nframe, self.cnn_dim, 88).reshape(B*88, self.nframe, self.cnn_dim)

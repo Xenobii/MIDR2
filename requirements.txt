@@ -12,3 +12,4 @@ soundfile
 pretty_midi
 scipy
 tqdm
+mir_eval

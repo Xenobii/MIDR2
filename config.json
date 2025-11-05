@@ -16,7 +16,7 @@
     },
     "input": {
         "nframe"     : 128,
-        "len_padding": 4
+        "len_padding": 32
     },
     "midi":{
         "num_pitch"     : 127,
@@ -42,8 +42,8 @@
     },
     "training": {
         "lr"         : 0.001,
-        "batch_size" : 64,
+        "batch_size" : 16,
         "num_workers": 8,
-        "epochs"     : 6
+        "epochs"     : 12
     }
 }

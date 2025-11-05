@@ -9,8 +9,14 @@ def plot_loss(path):
     train_loss    = []
     valid_loss    = []
 
-    train_loss_mpe = []
-    valid_loss_mpe = []
+    train_loss_mpe      = []
+    valid_loss_mpe      = []
+    train_loss_onset    = []
+    valid_loss_onset    = []
+    train_loss_offset   = []
+    valid_loss_offset   = []
+    train_loss_velocity = []
+    valid_loss_velocity = []
 
     train_loss_cd = []
     valid_loss_cd = []
@@ -21,10 +27,16 @@ def plot_loss(path):
         checkpoint = torch.load(path, map_location='cpu', weights_only=False)
         train_loss.append(checkpoint['epoch_loss_train'])
         train_loss_mpe.append(checkpoint['epoch_loss_train_mpe'])
+        train_loss_onset.append(checkpoint['epoch_loss_train_onset'])
+        train_loss_offset.append(checkpoint['epoch_loss_train_offset'])
+        train_loss_velocity.append(checkpoint['epoch_loss_train_velocity'])
         # train_loss_cd.append(checkpoint['epoch_loss_train_cd'])
         # train_loss_cc.append(checkpoint['epoch_loss_train_cc'])
         valid_loss.append(checkpoint['epoch_loss_valid'])
         valid_loss_mpe.append(checkpoint['epoch_loss_valid_mpe'])
+        valid_loss_onset.append(checkpoint['epoch_loss_valid_onset'])
+        valid_loss_offset.append(checkpoint['epoch_loss_valid_offset'])
+        valid_loss_velocity.append(checkpoint['epoch_loss_valid_velocity'])
         # valid_loss_cd.append(checkpoint['epoch_loss_valid_cd'])
         # valid_loss_cc.append(checkpoint['epoch_loss_valid_cc'])
 
@@ -43,8 +55,8 @@ def plot_loss(path):
     axes[0].grid(True)
 
     # ---- (2) CD Loss ----
-    axes[1].plot(epochs, train_loss_mpe, label='Train', linewidth=2)
-    axes[1].plot(epochs, valid_loss_mpe, label='Validation', linewidth=2)
+    axes[1].plot(epochs, train_loss_offset, label='Train', linewidth=2)
+    axes[1].plot(epochs, valid_loss_offset, label='Validation', linewidth=2)
     axes[1].set_title('CD Loss')
     axes[1].set_xlabel('Epoch')
     axes[1].set_ylabel('Loss')
